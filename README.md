@@ -4,7 +4,7 @@
 - [Developer installation](#developer-installation)
 - [First configuration](#configuring-the-labscript-suite-for-first-run)
 - [Adding a Custom Device to LabScript Suite](#adding-a-custom-device-to-labscript-suite)
-- [Simulating the devices Serial port]()
+- [Simulating the devices Serial port](#simulating-the-devices-serial-port)
 
 ---
 
@@ -103,7 +103,7 @@ python3 emulateSerPort.py
 3. Interacting with the simulation: Once the script is running, it will provide the simulated serial port (e.g. `/dev/pts/1`), which you can use in your connection table. 
 4. Close the simulation when no longer needed (e.g. `Ctrl+C`): It will close the simulated serial port. 
 
-
+---
 ## Knowledge gathering
 #### Kinds of Devices
 - Device: parent class for all devices (labscript.base)
@@ -119,6 +119,7 @@ and a user specified name from the connection table of a labscript file
 - serial ports can be listed with: `ls /dev/tty*` , `ls /dev/pts*`
 - open serial port can be displayed with: `lsof | grep /dev/pts/X`
 
+---
 ## Other user_devices
 
 - https://github.com/TU-Darmstadt-APQ/QUIPS_C-Userlib/blob/master/user_devices/Due_AD9910/blacs_tabs.py
