@@ -1,8 +1,10 @@
 from blacs.tab_base_classes import Worker, define_state
 from blacs.device_base_class import DeviceTab
+from user_devices.logger_config import logger
 
 class BS_341ATab(DeviceTab):
     def initialise_GUI(self):
+        logger.debug(f"The Gui is initialized")
         # Capabilities
         self.base_units = 'V'
         self.base_min = -5 # TODO: What is the range?

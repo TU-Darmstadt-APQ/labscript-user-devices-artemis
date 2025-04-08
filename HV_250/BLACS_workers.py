@@ -39,7 +39,7 @@ class HV_250Worker(Worker):
     def scale_to_range(self, normalized_value, max_range):
         """Convert a normalized value (0 to 1) to the specified range (-max_range to +max_range)"""
         max_range = float(max_range)
-            return  2 * max_range * normalized_value - max_range
+        return  2 * max_range * normalized_value - max_range
         
     def scale_to_normalized(self, actual_value, max_range):
         """Convert an actual value (within -max_range to +max_range) to a normalized value (0 to 1)"""

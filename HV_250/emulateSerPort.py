@@ -10,7 +10,7 @@ In the userlib directory, run the following command:
 
 """
 import os, pty, time
-from user_devices.logger_config import logger
+from logger_config import logger
 
 def read_command(master):
     """ Reads the command until the '\r' character is encountered.

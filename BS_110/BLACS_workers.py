@@ -25,7 +25,7 @@ class BS110Worker(Worker):
             # Parse the response from the device 
             if len(device_info) >= 4:
                 self.device_serial = device_info[0]  # For example, 'HV023'
-                self.device_voltage_range = device_info[1]  # For example, '500'
+                self.device_voltage_range = device_info[1]  # For example, '50'
                 self.device_channels = device_info[2]  # For example, '16'
                 self.device_output_type = device_info[3]  # For example, 'b' (bipolar, unipolar, quadrupole, steerer supply)
                 logger.info(f"Device Serial: {self.device_serial}, Voltage Range: {self.device_voltage_range}, Channels: {self.device_channels}, Output Type: {self.device_output_type}")
@@ -44,7 +44,7 @@ class BS110Worker(Worker):
     def scale_to_range(self, normalized_value, max_range):
         """Convert a normalized value (0 to 1) to the specified range (-max_range to +max_range)"""
         max_range = float(max_range)
-            return  2 * max_range * normalized_value - max_range
+        return  2 * max_range * normalized_value - max_range
         
     def scale_to_normalized(self, actual_value, max_range):
         """Convert an actual value (within -max_range to +max_range) to a normalized value (0 to 1)"""
@@ -75,7 +75,7 @@ class BS110Worker(Worker):
             print(f"{sendStr}")
             
             # TODO: front panel values with actual voltage values
-            denormalized_value = self.scale_to_range(scaled_voltage, self.device_voltage_range)
+            denormalized_value = self.scale_to_range(float(scaled_voltage), float(self.device_voltage_range))
             print(f"denormalize: {scaled_voltage} to {denormalized_value}")
             
         # Update displayed front panel    

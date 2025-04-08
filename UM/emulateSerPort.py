@@ -1,12 +1,12 @@
 """
-Simulate the serial port for HV-200, as I don't have access to the real device.
+Simulate the serial port, as I don't have access to the real device.
 
-You will create a virtual serial port using this script. This script will act as if it’s the BS 34-1A device. When you run the script, it will open a serial port (for example, /dev/pts/1) and allow other programs (such as your BLACS worker) to communicate with it.
+You will create a virtual serial port using this script. This script will act as if it’s the device. When you run the script, it will open a serial port (for example, /dev/pts/1) and allow other programs (such as your BLACS worker) to communicate with it.
 
 The virtual serial port should stay open while the simulation is running, so other code that expects to interact with the serial device can do so just as if the actual device were connected.
 
 In the userlib directory, run the following command:
-    python3 -m user_devices.HV_200.emulateSerPort
+    python3 -m user_devices.UM.emulateSerPort
 
 """
 import os, pty, time
@@ -24,10 +24,10 @@ def read_command(master):
 def test_serial():
     master, slave = pty.openpty()
     port_name = os.ttyname(slave)
-    print(f"For HV 200 use: {port_name}")
+    print(f"For HV 250-8 use: {port_name}")
     
     while True:
-        device_identity = "HV200 200 4 b\r"  
+        device_identity = "UM01\r"  
         command = read_command(master).decode().strip()
         if command:
             print(f"command {command}")
@@ -35,9 +35,17 @@ def test_serial():
             if command == "IDN":
                 response = device_identity.encode() 
                 os.write(master, response)
-            elif command.startswith("BS200 CH"):
+            elif command.startswith("UM01 CH"):
                 device, channel, voltage = command.split()[:3]
                 response = f"{channel} {voltage}\r"
+                os.write(master, response.encode())
+            elif command.startswith("UM01 ULTRA"):
+                device, mode, sec_channel = command.split()[:3]
+                response = f"{mode} {sec_channel}"
+                os.write(master, response.encode())
+            elif command.startswith("UM01 ULTRA"):
+                device, mode, sec_channel = command.split()[:3]
+                response = f"{mode} {sec_channel}"
                 os.write(master, response.encode())
             else:
                 response = "err\r"

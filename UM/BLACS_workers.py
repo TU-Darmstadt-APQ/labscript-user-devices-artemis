@@ -4,32 +4,23 @@ import serial
 from user_devices.logger_config import logger
 import time
 
-
-class BS_341AWorker(Worker):
+class UMWorker(Worker):
     def init(self):
         """Initialises communication with the device. When BLACS (re)starts"""
-        
-        try:
+        try: 
             # Try to establish a serial connection
             self.connection = serial.Serial(self.port, self.baud_rate, timeout=1)
-            logger.info(f"Connected to BS34-1A on {self.port} with baud rate {self.baud_rate}")
+            logger.info(f"Connected to UM on {self.port} with baud rate {self.baud_rate}")
             
             # Identify the device
-            self.send_to_BS("IDN\r")
-            time.sleep(0.5)
-            device_info = self.receive_from_BS().split()
-            print(f"Device response to IDN: {device_info}")
-            
-            # Parsing
-            self.device_serial = device_info[0]
-            self.device_voltage_range = device_info[1] # e.g. 5 from emulateSerPort
-            self.device_channels_number= device_info[2]
-            self.device_output_type = device_info[3]
+            self.send_to_UM("IDN\r")
+            self.device_serial  = self.receive_from_UM()
+            print(f"Device response to IDN: {self.device_serial}")
+            self.device_voltage_range = 28 # TODO: Check it later
             
         except Exception as e:
             raise RuntimeError(f"An error occurred during worker initialization: {e}")
-        
-        
+    
     def shutdown(self):
         # Should be done when Blacs is closed
         self.connection.close()
@@ -40,14 +31,61 @@ class BS_341AWorker(Worker):
         Runs at the end of the shot."""
         
         print(f"front panel values: {front_panel_values}")
+        # TODO: How to set voltages one by one and not all at once?
+        # TODO: self.attributes are same across the py fiels?
         
+        print(self.__getattribute__) #How o get all self attributes?
+        # current_mode = self.mode_dropdown.currentText() # Firstly i need to create the UI input for modes.
+        # print(f"Current Mode: {current_mode}") 
+
+        # if current_mode == "FAST": 
+        #     self.send_to_HV("UM01 FAST LV\r")
+        # elif current_mode == "ULTRA": 
+        #     self.send_to_HV("UM01 ULTRA LV\r")
+
         for channel, value in front_panel_values.items():
             scaled_voltage = self.scale_to_normalized(float(value), float(self.device_voltage_range))
-            sendStr = f"{self.device_serial} {channel} {scaled_voltage:.6f}\r"
-            self.send_to_BS(sendStr)
+            sendStr = f"{self.device_serial} {channel} {scaled_voltage:.7f}\r"
+            self.send_to_UM(sendStr)
             print(f"{sendStr}")
-            
+
         return front_panel_values
+
+    def channels2numbers(self, mode, channel):
+        """
+            CHXX:
+                01 - A', fast mode      19 - A', precision mode
+                03 - B'                 20 - B'
+                05 - C'                 21 - C'
+        """
+        channel_name = channel.split()[-1] # channel = "CH. X", where X can be A, B or C
+        channel_mapping = {
+            "ULTRA": {"A": "19", "B": "20", "C": "21"},
+            "FAST": {"A": "01", "B": "03", "C": "05"}
+        }
+
+        if mode not in channel_mapping:
+            raise ValueError(f"Invalid mode: {mode}")
+
+        if channel_name not in channel_mapping[mode]:
+            raise ValueError(f"Invalid channel name: {channel_name}")
+
+        return channel_mapping[mode][channel_name]
+
+    def numbers2channels(self, mode, number): 
+        channel_mapping = {
+            "ULTRA": {"19": "A", "20": "B", "21": "C"},
+            "FAST": {"01": "A", "03": "B", "05": "C"}
+        }
+
+        if mode not in channel_mapping:
+            raise ValueError(f"Invalid mode: {mode}")
+
+        if channel_name not in channel_mapping[mode]:
+            raise ValueError(f"Invalid channel number: {number}")
+
+        return channel_mapping[mode][number]
+
 
     def check_remote_values(self): # reads the current settings of the device, updating the BLACS_tab widgets 
         return
@@ -59,7 +97,6 @@ class BS_341AWorker(Worker):
         to the hardware. 
         Runs at the start of each shot."""
         return 
-        
 
     def transition_to_manual(self): 
         """transitions the device from buffered to manual mode to read/save measurements from hardware
@@ -67,15 +104,13 @@ class BS_341AWorker(Worker):
         Runs at the end of the shot."""
         return  
     
-    def send_to_BS(self, sendStr):
-        logger.debug(f"Sending to BS34-1A: {sendStr}")
+    def send_to_UM(self, sendStr):
+        logger.debug(f"Sending to UM: {sendStr}")
         self.connection.write(sendStr.encode())
-        # print(f"Sending to BS110: {sendStr}")
         
-    def receive_from_BS(self):
-        response = self.connection.readline().decode('utf-8').strip() # assuming utf-8 encoding
+    def receive_from_UM(self):
+        response = self.connection.readline().decode('utf-8').strip() 
         logger.debug(f"Received from device: {response}")
-        # print(f"Received from device: {response}")
         return(response)
     
     def abort_transition_to_buffered(self):
@@ -89,3 +124,4 @@ class BS_341AWorker(Worker):
     def scale_to_normalized(self, actual_value, range_max):
         """Convert an actual value (within -max_range to +max_range) to a normalized value (0 to 1)"""
         return (actual_value + range_max) / (2 * range_max)
+        

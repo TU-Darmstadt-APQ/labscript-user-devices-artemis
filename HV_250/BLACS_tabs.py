@@ -1,6 +1,12 @@
 from blacs.tab_base_classes import Worker, define_state
 from blacs.device_base_class import DeviceTab
 
+from qtutils import UiLoader, inmain_decorator
+import qtutils.icons
+from qtutils.qt import QtWidgets, QtGui, QtCore
+import pyqtgraph as pg
+
+
 class HV_250Tab(DeviceTab):
     def initialise_GUI(self):
         # Analog output properties dictionary
