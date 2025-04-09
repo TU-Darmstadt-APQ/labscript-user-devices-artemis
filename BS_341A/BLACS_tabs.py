@@ -4,7 +4,7 @@ from user_devices.logger_config import logger
 
 class BS_341ATab(DeviceTab):
     def initialise_GUI(self):
-        logger.debug(f"The Gui is initialized")
+
         # Capabilities
         self.base_units = 'V'
         self.base_min = -5 # TODO: What is the range?
@@ -12,9 +12,7 @@ class BS_341ATab(DeviceTab):
         self.base_step = 1
         self.base_decimals = 3
         self.num_AO = 4
-        
-        print("initialize_GUI is called")
-        
+                
         # Create AO Output objects
         ao_prop = {}
         for i in range(self.num_AO):
@@ -32,7 +30,7 @@ class BS_341ATab(DeviceTab):
         # Create widgets for output objects
         widgets, ao_widgets,_ = self.auto_create_widgets()
         self.auto_place_widgets(("Analog Outputs", ao_widgets))
-        self.auto_place_widgets(widgets)
+        # self.auto_place_widgets(widgets)
         
         # Set the capabilities of this device
         self.supports_remote_value_check(False)

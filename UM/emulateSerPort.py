@@ -24,14 +24,13 @@ def read_command(master):
 def test_serial():
     master, slave = pty.openpty()
     port_name = os.ttyname(slave)
-    print(f"For HV 250-8 use: {port_name}")
+    print(f"For UM use: {port_name}")
     
     while True:
         device_identity = "UM01\r"  
         command = read_command(master).decode().strip()
         if command:
-            print(f"command {command}")
-            logger.debug(f"command from remote: {command} ")
+            print("command {}".format(command))
             if command == "IDN":
                 response = device_identity.encode() 
                 os.write(master, response)
@@ -41,11 +40,11 @@ def test_serial():
                 os.write(master, response.encode())
             elif command.startswith("UM01 ULTRA"):
                 device, mode, sec_channel = command.split()[:3]
-                response = f"{mode} {sec_channel}"
+                response = f"{mode} {sec_channel}\r"
                 os.write(master, response.encode())
             elif command.startswith("UM01 ULTRA"):
                 device, mode, sec_channel = command.split()[:3]
-                response = f"{mode} {sec_channel}"
+                response = f"{mode} {sec_channel}\r"
                 os.write(master, response.encode())
             else:
                 response = "err\r"

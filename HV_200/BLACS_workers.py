@@ -63,7 +63,7 @@ class HV_200Worker(Worker):
     def check_remote_values(self): # reads the current settings of the device, updating the BLACS_tab widgets 
         return
 
-    def transition_to_buffered(self, device_name, h5_file): 
+    def transition_to_buffered(self, device_name, h5_file, initial_values, fresh): 
         """transitions the device to buffered shot mode, 
         reading the shot h5 file and taking the saved instructions from 
         labscript_device.generate_code and sending the appropriate commands 

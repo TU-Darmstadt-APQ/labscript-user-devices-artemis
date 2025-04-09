@@ -16,7 +16,6 @@ class BS_341AWorker(Worker):
             
             # Identify the device
             self.send_to_BS("IDN\r")
-            time.sleep(0.5)
             device_info = self.receive_from_BS().split()
             print(f"Device response to IDN: {device_info}")
             
@@ -52,7 +51,7 @@ class BS_341AWorker(Worker):
     def check_remote_values(self): # reads the current settings of the device, updating the BLACS_tab widgets 
         return
 
-    def transition_to_buffered(self, device_name, h5_file): 
+    def transition_to_buffered(self, device_name, h5_file, initial_values, fresh): 
         """transitions the device to buffered shot mode, 
         reading the shot h5 file and taking the saved instructions from 
         labscript_device.generate_code and sending the appropriate commands 
@@ -74,12 +73,11 @@ class BS_341AWorker(Worker):
         
     def receive_from_BS(self):
         response = self.connection.readline().decode('utf-8').strip() # assuming utf-8 encoding
-        logger.debug(f"Received from device: {response}")
+        logger.debug(f"Received from BS34-1A: {response}")
         # print(f"Received from device: {response}")
         return(response)
     
     def abort_transition_to_buffered(self):
-        self.runner.abort()
         return self.transition_to_manual(True)
     
     def scale_to_range(self, normalized_value, range_max):

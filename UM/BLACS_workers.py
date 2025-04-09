@@ -34,7 +34,6 @@ class UMWorker(Worker):
         # TODO: How to set voltages one by one and not all at once?
         # TODO: self.attributes are same across the py fiels?
         
-        print(self.__getattribute__) #How o get all self attributes?
         # current_mode = self.mode_dropdown.currentText() # Firstly i need to create the UI input for modes.
         # print(f"Current Mode: {current_mode}") 
 
@@ -42,10 +41,16 @@ class UMWorker(Worker):
         #     self.send_to_HV("UM01 FAST LV\r")
         # elif current_mode == "ULTRA": 
         #     self.send_to_HV("UM01 ULTRA LV\r")
-
+        
+        
         for channel, value in front_panel_values.items():
+            # channel = 'CH. X'
+            # sendStr = 'UM01 CHXX Y.YYYYYYY'
+            channel_letter = channel.split()[-1] # 'X'
+            channel_number = self.channels2numbers("ULTRA", channel_letter)
+            formatted_channel = f"CH{channel_number:02d}"
             scaled_voltage = self.scale_to_normalized(float(value), float(self.device_voltage_range))
-            sendStr = f"{self.device_serial} {channel} {scaled_voltage:.7f}\r"
+            sendStr = f"{self.device_serial} {formatted_channel} {scaled_voltage:.7f}\r"
             self.send_to_UM(sendStr)
             print(f"{sendStr}")
 
@@ -90,7 +95,7 @@ class UMWorker(Worker):
     def check_remote_values(self): # reads the current settings of the device, updating the BLACS_tab widgets 
         return
 
-    def transition_to_buffered(self, device_name, h5_file): 
+    def transition_to_buffered(self, device_name, h5_file, initial_values, fresh): 
         """transitions the device to buffered shot mode, 
         reading the shot h5 file and taking the saved instructions from 
         labscript_device.generate_code and sending the appropriate commands 
@@ -110,11 +115,10 @@ class UMWorker(Worker):
         
     def receive_from_UM(self):
         response = self.connection.readline().decode('utf-8').strip() 
-        logger.debug(f"Received from device: {response}")
+        logger.debug(f"Received from UM: {response}")
         return(response)
     
     def abort_transition_to_buffered(self):
-        self.runner.abort()
         return self.transition_to_manual(True)
     
     def scale_to_range(self, normalized_value, range_max):

@@ -4,27 +4,10 @@ from qtutils import UiLoader
 from user_devices.logger_config import logger
 
 class UMTab(DeviceTab):
+    """to define device capabilities and generate the GUI for manual control of the device through the front panel"""
     def initialize_GUI(self):
-        logger.debug(f"initializaing GUI :)))))")
-        # self.mode_dropdown = self.create_dropdown(
-        # name="Mode",
-        # choices=["FAST", "ULTRA"],
-        # default="ULTRA"
-        # )
-        # self.auto_place_widgets(("Operation Mode", [self.mode_dropdown]))
 
-        # Trying new UI for modes
-        self.base_mode = 'Mode'
-        self.fast_mode = 'FAST'
-        self.ultra_mode = 'ULTRA'
-
-        mode_prop = {
-            'base_mode': self.base_units,
-            'fast_mode': self.fast_mode,
-            'ultra_mode': self.ultra_mode,
-        }
-
-        # Capabilities
+        # Define capabilities 
         self.base_units = 'V'
         self.base_min = 0 
         self.base_max = 28 # TODO: What is the maximum?
@@ -32,45 +15,48 @@ class UMTab(DeviceTab):
         self.base_decimals = 6
         self.num_AO = 3 # Three for secondary channels
 
-        ao_prop = {}
-        ao_prop['CH. A'] = {
+        ao_prop = {
+            'CH. A': {
                 'base_unit': self.base_units,
                 'min': self.base_min,
                 'max': self.base_max,
                 'step': self.base_step,
                 'decimals': self.base_decimals,
-            }
-        ao_prop['CH. B'] = {
+            },
+            'CH. B': {
                 'base_unit': self.base_units,
                 'min': self.base_min,
                 'max': self.base_max,
                 'step': self.base_step,
                 'decimals': self.base_decimals,
-            }
-        ao_prop['CH. C'] = {
+            },
+            'CH. C': {
                 'base_unit': self.base_units,
                 'min': self.base_min,
                 'max': self.base_max,
                 'step': self.base_step,
                 'decimals': self.base_decimals,
-            }
+            },
+        }
         
-
         # Create the output objects
+        # It will have automatically looked up relevant entries in the BLACS connection table to get their name and unit conversion. 
+        # TODO: how it is connected to connection table, wat should be defined there?
         self.create_analog_outputs(ao_prop)
-        self.create_digital_outputs(mode_prop)
         
         # Create widgets for output objects
-        widgets, ao_widgets, do_widgets = self.auto_create_widgets()
+        dds_widgets, ao_widgets, do_widgets = self.auto_create_widgets()
         self.auto_place_widgets(("Secondary channels", ao_widgets))
-        self.auto_place_widgets(("Modes", do_widgets))
-        self.auto_place_widgets(widgets)
+
+        # Accessing the Qt Layout which contains the main body of the tab 
+        self.get_tab_layout()
         
         # Set the capabilities of this device
         self.supports_remote_value_check(False)
-        self.supports_smart_programming(False)
+        self.supports_smart_programming(False) # see at 3.3.19, 5.3 (docs) 
 
     def initialise_workers(self):
+        """ Tells the device Tab to launch one or more worker processes to communicate with the device."""
         # Get properties from connection table.
         device = self.settings['connection_table'].find_by_name(self.device_name)
         
@@ -86,10 +72,3 @@ class UMTab(DeviceTab):
             )
         self.primary_worker = "main_worker"
 
-    def change_mode(self, index):
-        # TODO: Where to change the attributs?
-        mode = self.mode_dropdown.currentText()
-        if mode == "FAST":
-            self.base_decimals = 7
-            self.send_to_UM
-        

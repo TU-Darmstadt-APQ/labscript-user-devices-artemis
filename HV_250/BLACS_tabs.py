@@ -1,10 +1,16 @@
 from blacs.tab_base_classes import Worker, define_state
 from blacs.device_base_class import DeviceTab
 
-from qtutils import UiLoader, inmain_decorator
+from qtutils.qt.QtCore import *
+from qtutils.qt.QtGui import *
+from qtutils.qt.QtWidgets import *
+
+from qtutils import *
+from PyQt5 import QtWidgets 
+from labscript_utils.qtwidgets.outputbox import OutputBox
 import qtutils.icons
-from qtutils.qt import QtWidgets, QtGui, QtCore
-import pyqtgraph as pg
+
+from user_devices.logger_config import logger
 
 
 class HV_250Tab(DeviceTab):
@@ -17,9 +23,13 @@ class HV_250Tab(DeviceTab):
         self.base_decimals = 3
         self.num_AO = 8 # Assuming 8 channels
         
+        # DEBUG
+        print("HOW IS IT") # soes not show up
+        logger.info("INITIALIZE GUI FROM TAB") # not working, Why?
+
         analog_properties = {}
         for i in range(self.num_AO):
-            analog_properties['CH%d' % i] = {
+            analog_properties['CH%02d' % i] = {
                 'base_unit': self.base_unit,
                 'min': self.base_min,
                 'max': self.base_max,
@@ -28,12 +38,51 @@ class HV_250Tab(DeviceTab):
                 }
         # Create and save AO objects
         self.create_analog_outputs(analog_properties)
+
         # Create widgets for AO objects
-        _, ao_widgets, do_widgets = self.auto_create_widgets()
+        _, ao_widgets,_ = self.auto_create_widgets()
         self.auto_place_widgets(("Analog outputs", ao_widgets))
-        self.auto_place_widgets(("Overload status", do_widgets)) # I hope this is suitable for lock status
         self.supports_smart_programming(False)        
         self.supports_remote_value_check(False)
+
+        ### Create indicator UI elements. But i don't see any new widgets in BLACS
+        self.status_indicators = {}  # Dictionary to store indicators for each channel
+        self.check_buttons = {}
+
+        status_widgets = []
+        for i in range(self.num_AO):
+            channel_name = f"CH{i:02d}"
+            
+            # Create QLabel for the indicator
+            indicator = QtWidgets.QLabel()
+            indicator.setFixedSize(20, 20)
+            indicator.setStyleSheet("background-color: green; border-radius: 10px;")
+            
+            # Store the indicator in the status_indicators dictionary
+            self.status_indicators[channel_name] = indicator
+
+            # Create Check button
+            check_button = QtWidgets.QPushButton("Check")
+            check_button.setFixedWidth(60)
+            check_button.clicked.connect(lambda _, ch=channel_name: self.check_overload_status(ch))
+            self.check_buttons[channel_name] = check_button
+
+            # Create layout for the status display
+            layout = QtWidgets.QHBoxLayout()
+            layout.addWidget(QtWidgets.QLabel(channel_name))
+            layout.addWidget(indicator)
+            layout.addWidget(check_button)
+            
+            # Create a QWidget to hold the layout
+            widget = QtWidgets.QWidget()
+            widget.setLayout(layout)
+
+            # Add the widget to the list
+            status_widgets.append(widget)
+
+        # Place the status widgets in the GUI
+        self.auto_place_widgets(("Overload Status", status_widgets))
+
     
     def initialise_workers(self):
         # Get properties from connection table

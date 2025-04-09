@@ -85,7 +85,7 @@ touch __init__.py BLACS_tabs.py BLACS_workers.py labscript_devices.py register_c
 
 6. Run BLACS with Your New Device: After updating the connection table, start BLACS. You should see a new tab for your custom device.
 
-
+Or also see [docu](https://github.com/labscript-suite/blacs/blob/master/docs/How%20to%20add%20a%20new%20device/main.pdf)
 
 ---
 
