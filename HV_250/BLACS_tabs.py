@@ -9,6 +9,9 @@ from qtutils import *
 from PyQt5 import QtWidgets 
 from labscript_utils.qtwidgets.outputbox import OutputBox
 import qtutils.icons
+from qtutils.qt.QtWidgets import QVBoxLayout, QGroupBox
+
+from labscript_utils.qtwidgets.toolpalette import ToolPaletteGroup
 
 from user_devices.logger_config import logger
 
@@ -24,8 +27,7 @@ class HV_250Tab(DeviceTab):
         self.num_AO = 8 # Assuming 8 channels
         
         # DEBUG
-        print("HOW IS IT") # soes not show up
-        logger.info("INITIALIZE GUI FROM TAB") # not working, Why?
+        logger.info("INITIALIZE GUI FROM TAB") 
 
         analog_properties = {}
         for i in range(self.num_AO):
@@ -41,49 +43,32 @@ class HV_250Tab(DeviceTab):
 
         # Create widgets for AO objects
         _, ao_widgets,_ = self.auto_create_widgets()
-        self.auto_place_widgets(("Analog outputs", ao_widgets))
+
+        self.auto_place_widgets(("Analog outputs", ao_widgets)) 
+
         self.supports_smart_programming(False)        
         self.supports_remote_value_check(False)
 
-        ### Create indicator UI elements. But i don't see any new widgets in BLACS
-        self.status_indicators = {}  # Dictionary to store indicators for each channel
-        self.check_buttons = {}
 
-        status_widgets = []
-        for i in range(self.num_AO):
-            channel_name = f"CH{i:02d}"
-            
-            # Create QLabel for the indicator
-            indicator = QtWidgets.QLabel()
-            indicator.setFixedSize(20, 20)
-            indicator.setStyleSheet("background-color: green; border-radius: 10px;")
-            
-            # Store the indicator in the status_indicators dictionary
-            self.status_indicators[channel_name] = indicator
+    def _create_overload_object(self,parent_device,BLACS_hardware_name,labscript_hardware_name,properties):
+        """ """
+        # Find the connection name
+        device = self.get_child_from_connection_table(parent_device,labscript_hardware_name)
+        connection_name = device.name if device else '-'
+        
+        # Get the calibration details
+        calib_class = None
+        calib_params = {}
+        if device:
+            # get the AO from the connection table, find its calibration details
+            calib_class = device.unit_conversion_class if device.unit_conversion_class != "None" else None
+            calib_params = device.unit_conversion_params
+        
+        # Instantiate the AO object
+        return AO(BLACS_hardware_name, connection_name, self.device_name, self.program_device, self.settings, calib_class, calib_params,
+                properties['base_unit'], properties['min'], properties['max'], properties['step'], properties['decimals'])
 
-            # Create Check button
-            check_button = QtWidgets.QPushButton("Check")
-            check_button.setFixedWidth(60)
-            check_button.clicked.connect(lambda _, ch=channel_name: self.check_overload_status(ch))
-            self.check_buttons[channel_name] = check_button
 
-            # Create layout for the status display
-            layout = QtWidgets.QHBoxLayout()
-            layout.addWidget(QtWidgets.QLabel(channel_name))
-            layout.addWidget(indicator)
-            layout.addWidget(check_button)
-            
-            # Create a QWidget to hold the layout
-            widget = QtWidgets.QWidget()
-            widget.setLayout(layout)
-
-            # Add the widget to the list
-            status_widgets.append(widget)
-
-        # Place the status widgets in the GUI
-        self.auto_place_widgets(("Overload Status", status_widgets))
-
-    
     def initialise_workers(self):
         # Get properties from connection table
         device = self.settings['connection_table'].find_by_name(self.device_name)
@@ -107,3 +92,29 @@ class HV_250Tab(DeviceTab):
         
         self.primary_worker = "main_worker"
         
+class CircularIndicator(QLabel):
+    """ Draw a circular indicator. """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(20, 20)  # Size of the circular indicator
+        self.setAlignment(Qt.AlignTop)
+        self.status_color = QColor("green")  # Initial color (green for normal)
+        self.setStyleSheet("background-color: transparent;")
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # Draw the circle
+        rect = QRect(0, 0, self.width(), self.height())
+        painter.setBrush(QBrush(self.status_color))
+        painter.setPen(Qt.NoPen)
+        painter.drawEllipse(rect)
+        
+    def set_status(self, status):
+        """Set the color of the circular indicator."""
+        if status == "overload":
+            self.status_color = QColor("red")
+        else:
+            self.status_color = QColor("green")
+        self.update()  # Trigger a repaint to reflect the new color
