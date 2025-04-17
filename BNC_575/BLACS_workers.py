@@ -52,13 +52,13 @@ class BNC_575Worker(Worker):
         
         print(f"front panel values: {front_panel_values}")
         
-        for channel, value in front_panel_values.items():
+        # for channel, value in front_panel_values.items():
             
-            sendStr = f"\r\n" #TODO: Setting things up
-            print(f"Sent to BNC: {sendStr}")
-            self.send_to_BNC(sendStr)
-            response = self.receive_from_BNC()
-            print(f"Received from BNC: {response}")
+        #     sendStr = f"\r\n" #TODO: Setting things up
+        #     print(f"Sent to BNC: {sendStr}")
+        #     self.send_to_BNC(sendStr)
+        #     response = self.receive_from_BNC()
+        #     print(f"Received from BNC: {response}")
         
             
         return front_panel_values
