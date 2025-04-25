@@ -105,6 +105,12 @@ python3 emulateSerPort.py
 
 ---
 ## Knowledge gathering
+#### HDF files
+ The HDF file begins life containing only experiment parameters. As it is passed between components of the labscript suite, 
+ the file grows to contain the hardware instructions, acquired data, and analysis results. 
+ The GUI, runmanager, creates the HDF file for the experiment shot and stores the parameters within. 
+ If a parameter is a list of values, rather than a single value, 
+ runmanager creates an HDF file (a prospective shot) for each value.
 #### Kinds of Devices
 - Device: parent class for all devices (labscript.base)
 - IntermediateDevice: base class for all devices that are to be clocked by a pseudoclock (labscript.core)

@@ -2,7 +2,9 @@ from blacs.tab_base_classes import Worker
 from labscript import LabscriptError
 import usb.core
 import usb.util
-import serial 
+import serial
+import h5py
+
 
 from user_devices.logger_config import logger
 import time
@@ -121,13 +123,32 @@ class CAENWorker(Worker):
         labscript_device.generate_code and sending the appropriate commands 
         to the hardware. 
         Runs at the start of each shot."""
-        return 
+
+        print(f"[CAENWorker] Transition to buffered: {h5_file}")
+
+        with h5py.File(h5_file, 'r') as f:
+            times = f[f'devices/{device_name}/TIMES'][()]
+            analog_data = f[f'devices/{device_name}/ANALOG_OUTPUTS'][()]
+            channels = analog_data.dtype.names  # ('CH0', 'CH1', ...)
+
+        self.buffer = []
+
+        for i, t in enumerate(times):
+            # Сохраняем одно состояние (время + значения всех каналов)
+            entry = {ch: analog_data[ch][i] for ch in channels}
+            entry['t'] = t
+            self.buffer.append(entry)
+
+        print(f"[CAENWorker] Buffered {len(self.buffer)} steps.")
+        return self.buffer[0]  # для initial_state
         
 
     def transition_to_manual(self): 
         """transitions the device from buffered to manual mode to read/save measurements from hardware
         to the shot h5 file as results. 
         Runs at the end of the shot."""
-        return  
-    
-        
+        return
+
+    def abort_transition_to_buffered(self):
+        print("[CAENWorker] abort_transition_to_buffered() called.")
+        return True

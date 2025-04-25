@@ -45,11 +45,8 @@ class BNC_575Worker(Worker):
         setting outputs to the values set in the BLACS_tab widgets. 
         Runs at the end of the shot.
         setting the pulse width, delay and period --> ok\r\n
-
-
         """
-        
-        
+
         print(f"front panel values: {front_panel_values}")
         
         # for channel, value in front_panel_values.items():
@@ -59,8 +56,7 @@ class BNC_575Worker(Worker):
         #     self.send_to_BNC(sendStr)
         #     response = self.receive_from_BNC()
         #     print(f"Received from BNC: {response}")
-        
-            
+
         return front_panel_values
 
     def check_remote_values(self): # reads the current settings of the device, updating the BLACS_tab widgets 
