@@ -7,57 +7,14 @@ class BNC_575Tab(DeviceTab):
         properties = connection_table.find_by_name(self.device_name).properties
 
         num_AO = properties.get('num_AO', 8)
-
         do_prop = {}
-        for i in range(self.num_DO): # do the flags correspond to digital output?
-            do_prop['flag %d' % i] = {}
-
-        # Create the output objects
+        for i in range(num_AO):
+            do_prop['do{:01d}'.format(i)] = {}
         self.create_digital_outputs(do_prop)
-        # Create widgets for output objects
-        dds_widgets, ao_widgets, do_widgets = self.auto_create_widgets()
-        self.auto_place_widgets(("Flags", do_widgets))
-
-        # channel_names = [f'ch{i}' for i in range(num_AO)]
-        # pulse_params = {}
-        # for ch in channel_names:
-        #     pulse_params[ch] = {
-        #         'delay': {
-        #             'base_unit': 'ns',
-        #             'min': 0,
-        #             'max': 1e9,
-        #             'step': 1,
-        #             'decimals': 0
-        #         },
-        #         'width': {
-        #             'base_unit': 'ns',
-        #             'min': 1,
-        #             'max': 1e9,
-        #             'step': 1,
-        #             'decimals': 0
-        #         },
-        #         'period': {
-        #             'base_unit': 'ns',
-        #             'min': 10,
-        #             'max': 1e9,
-        #             'step': 10,
-        #             'decimals': 0
-        #         },
-        #         'polarity': {
-        #             'enum': ['Positive', 'Negative']
-        #         },
-        #         'state': {
-        #             'type': 'bool'
-        #         }
-        #     }
-        # self.create_digital_outputs(pulse_params)
-        #
-        # widgets = self.auto_create_widgets()
-
+        _, _, do_widgets = self.auto_create_widgets()
+        self.auto_place_widgets(('Digital Outputs', do_widgets))
         self.supports_remote_value_check(False)
         self.supports_smart_programming(False)
-
-
 
     
     def initialise_workers(self):

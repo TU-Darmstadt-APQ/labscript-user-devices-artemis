@@ -56,9 +56,9 @@ class CAENWorker(Worker):
     def _init_serial(self):
         try:
             self.connection = serial.Serial(self.port, self.baud_rate, timeout=1)
-            logger.info(f"Serial connection opened on {self.port} at {self.baud_rate} bps")
+            logger.info(f"CAEN Serial connection opened on {self.port} at {self.baud_rate} bps")
         except Exception as e:
-            raise LabscriptError(f"Serial connection failed: {e}")
+            raise LabscriptError(f"CAEN Serial connection failed: {e}")
 
     def send_to_CAEN(self, cmd_str):
         logger.debug(f"Sending to CAEN: {cmd_str}")
@@ -152,3 +152,6 @@ class CAENWorker(Worker):
     def abort_transition_to_buffered(self):
         print("[CAENWorker] abort_transition_to_buffered() called.")
         return True
+
+    def abort_buffered(self):
+        return self.abort_transition_to_buffered()
