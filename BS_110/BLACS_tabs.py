@@ -9,7 +9,7 @@ class BS110Tab(DeviceTab):
         self.base_max = 50
         self.base_step = 1
         self.base_decimals = 3 
-        self.num_AO = 3
+        self.num_AO = 10
         
         print("initialize_GUI is called")
         

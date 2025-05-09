@@ -24,7 +24,7 @@ def test_serial():
     
     while True:
         try:
-            device_identity = "BS110 50 16 b\r"
+            device_identity = "BS110 50 10 b\r"
             command = read_command(master).decode().strip()
             if command:
                 print("command {}".format(command))

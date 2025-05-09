@@ -1,7 +1,12 @@
 from labscript_devices import register_classes
-from labscript import Device, set_passed_properties
+from labscript import Device, set_passed_properties, IntermediateDevice, AnalogOut, config
+import numpy as np
+from labscript import LabscriptError
+from labscript_devices.NI_DAQmx.utils import split_conn_DO, split_conn_AO
+from user_devices.logger_config import logger
 
-class BS_110(Device):
+
+class BS_110(IntermediateDevice):
     description = 'Stahl BS-1-10 Cryo Biasing'
     
     @set_passed_properties({"connection_table_properties": ["port", "baud_rate"]})
@@ -12,8 +17,57 @@ class BS_110(Device):
     def add_device(self, device):
         Device.add_device(self, device)
 
+    def _make_analog_out_table(self, analogs, times):
+        """Create a structured numpy array with first column as 'time', followed by analog channel data.
+        Args:
+            analogs (dict): Mapping of connection names to AnalogOut devices.
+            times (array-like): Array of time points.
+        Returns:
+            np.ndarray: Structured array with time and analog outputs.
+        """
+        if not analogs:
+            return None
+
+        n_timepoints = len(times)
+        connections = sorted(analogs, key=split_conn_AO)  # sorted channel names
+        dtypes = [('time', np.float64)] + [(c, np.float32) for c in connections]  # first column = time
+
+        analog_out_table = np.empty(n_timepoints, dtype=dtypes)
+
+        analog_out_table['time'] = times
+        for connection, output in analogs.items():
+            analog_out_table[connection] = output.raw_output
+
+        return analog_out_table
+
     def generate_code(self, hdf5_file):
         """Convert the list of commands into numpy arrays and save them to the shot file."""
-        Device.generate_code(self, hdf5_file)
-       
+        logger.info("generate_code for BS 110 is called")
+        IntermediateDevice.generate_code(self, hdf5_file)
+        group = self.init_device_group(hdf5_file)
 
+        clockline = self.parent_device
+        pseudoclock = clockline.parent_device
+        times = pseudoclock.times[clockline]
+
+        # determine dtypes
+        dtypes = []
+        for child_device in self.child_devices:
+            if isinstance(child_device, AnalogOut):
+                device_dtype = np.float64
+            else:
+                raise LabscriptError('%s has unexpected type' %child_device)
+            dtypes.append((child_device.name, device_dtype))
+
+        # create dataset
+        analogs = {}
+        # out_table = np.zeros(len(times), dtype=dtypes)
+        for child_device in self.child_devices:
+            # out_table[child_device.name][:] = child_device.raw_output
+            if isinstance(child_device, AnalogOut):
+                analogs[child_device.connection] = child_device
+
+        AO_table = self._make_analog_out_table(analogs, times)
+        logger.info(f"Times in generate_code AO table: {times}")
+        logger.info(f"AO table for BS-110 is: {AO_table}")
+        group.create_dataset("AO", data=AO_table, compression=config.compression)
