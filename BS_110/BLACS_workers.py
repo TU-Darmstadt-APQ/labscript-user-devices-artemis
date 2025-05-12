@@ -43,23 +43,13 @@ class BS110Worker(Worker):
     def shutdown(self):
         # Should be done when Blacs is closed
         self.connection.close()
-
-    def _scale_to_range(self, normalized_value, max_range):
-        """Convert a normalized value (0 to 1) to the specified range (-max_range to +max_range)"""
-        max_range = float(max_range)
-        return  2 * max_range * normalized_value - max_range
-        
-    def _scale_to_normalized(self, actual_value, max_range):
-        """Convert an actual value (within -max_range to +max_range) to a normalized value (0 to 1)"""
-        max_range = float(max_range)
-        return (actual_value + max_range) / (2 * max_range)
     
     def program_manual(self, front_panel_values): 
         """Allows for user control of the device via the BLACS_tab, 
         setting outputs to the values set in the BLACS_tab widgets. 
         Runs outside of the shot."""
         # TODO: Optimise so that only items that have changed are reprogrammed by storing the last programmed values
-        # TODO: Set the final values (if they are defined) to the front panel
+        # TODO: Store manual values to h5 file
 
         rich_print(f"---------- Manual MODE start: ----------", color=PURPLE)
         print("Front panel values (before shot):")
@@ -77,6 +67,8 @@ class BS110Worker(Worker):
         for ch_name, voltage in self.final_values.items():
             print(f"  {ch_name}: {voltage:.2f} V")
 
+        self.final_values = {} # Empty after restoring
+
         # Program the device for each channel
         print("\nProgramming the device with the following values:")
         print("----------DEBUG------------")
@@ -87,18 +79,18 @@ class BS110Worker(Worker):
             print(f"channel name: {channel_name}, \t voltage: {voltage}")
             self._program_manual(channel_num, voltage)
 
-        # Update final values
-        for ch_name, value in front_panel_values.items():
-            ch_num = self._get_channel_num(ch_name)
-            self.final_values[f"ao{ch_num}"] = value
-        for ch_name, voltage in self.final_values.items():
-            print(f"{ch_name:<6}: {voltage:.2f} V")
+        # # Update final values
+        # for ch_name, value in front_panel_values.items():
+        #     ch_num = self._get_channel_num(ch_name)
+        #     self.final_values[f"ao{ch_num}"] = value
+        # for ch_name, voltage in self.final_values.items():
+        #     print(f"{ch_name:<6}: {voltage:.2f} V")
 
         rich_print(f"---------- Manual MODE end: ----------", color=PURPLE)
         return front_panel_values
 
     def _program_manual(self, channel_num, value):
-        """Helper function to send the voltage to the BS-110 device.
+        """Helper function to send the voltage value to the BS-110 device.
         Args:
             channel_num (int)
             value (float)
@@ -180,7 +172,7 @@ class BS110Worker(Worker):
                 sendStr = f"{self.device_serial} CH{channel_num} {scaled:.6f}\r"
                 print(f"→ Channel: {channel_name} (#{channel_num}), Voltage: {voltage}, Scaled: {scaled}")
                 self.send_to_BS(sendStr)
-                self.receive_from_BS() # TODO:Do not accommodate the responses in the buffer.
+                self.receive_from_BS() # Do not store the responses in the serial buffer.
                 self.final_values[channel_name] = voltage
 
         rich_print(f"---------- End transition to Buffered: ----------", color=BLUE)
@@ -222,7 +214,16 @@ class BS110Worker(Worker):
             print(f"Failed to abort properly: {e}")
             return
 
+    def _scale_to_range(self, normalized_value, max_range):
+        """Convert a normalized value (0 to 1) to the specified range (-max_range to +max_range)"""
+        max_range = float(max_range)
+        return 2 * max_range * normalized_value - max_range
 
-# ------------------
+    def _scale_to_normalized(self, actual_value, max_range):
+        """Convert an actual value (within -max_range to +max_range) to a normalized value (0 to 1)"""
+        max_range = float(max_range)
+        return (actual_value + max_range) / (2 * max_range)
+
+# ------------------ constants
 BLUE = '#66D9EF'
 PURPLE = '#A020F0'
