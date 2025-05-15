@@ -1,17 +1,22 @@
+from qtutils.qt.QtWidgets import QPushButton, QSizePolicy, QHBoxLayout, QSpacerItem, QSizePolicy as QSP
 from blacs.tab_base_classes import Worker, define_state
 from blacs.device_base_class import DeviceTab
+from user_devices.logger_config import logger
+from blacs.tab_base_classes import MODE_MANUAL
 
 class BS110Tab(DeviceTab):
     def initialise_GUI(self):
+
+        connection_table = self.settings['connection_table']
+        properties = connection_table.find_by_name(self.device_name).properties
+
         # Capabilities
         self.base_units = 'V'
         self.base_min = -50 # TODO: What is the range?
         self.base_max = 50
         self.base_step = 1
         self.base_decimals = 3 
-        self.num_AO = 10
-        
-        print("initialize_GUI is called")
+        self.num_AO = properties['num_AO']
         
         # Create AO Output objects
         ao_prop = {}
@@ -30,6 +35,36 @@ class BS110Tab(DeviceTab):
         # Create widgets for output objects
         widgets, ao_widgets,_ = self.auto_create_widgets()
         self.auto_place_widgets(("Analog Outputs", ao_widgets))
+
+        # Add button to reprogramm device from manual mode
+        self.send_button = QPushButton("Send to device")
+        self.send_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.send_button.adjustSize()
+        self.send_button.setStyleSheet("""
+            QPushButton {
+                border: 1px solid #B8B8B8;
+                border-radius: 3px;
+                background-color: #F0F0F0;
+                padding: 4px 10px;
+                font-weight: light;
+            }
+            QPushButton:hover {
+                background-color: #E0E0E0;
+            }
+            QPushButton:pressed {
+                background-color: #D0D0D0;
+            }
+        """)
+        self.send_button.clicked.connect(lambda: self.send_to_BS())
+
+        # Add centered layout to center the button
+        center_layout = QHBoxLayout()
+        center_layout.addStretch()
+        center_layout.addWidget(self.send_button)
+        center_layout.addStretch()
+
+        # Add center layout on device layout
+        self.get_tab_layout().addLayout(center_layout)
         
         self.supports_remote_value_check(False)
         self.supports_smart_programming(False)
@@ -42,9 +77,11 @@ class BS110Tab(DeviceTab):
         # look up the port and baud in the connection table
         port = device.properties["port"]
         baud_rate = device.properties["baud_rate"]
+        num_AO = device.properties['num_AO']
         worker_kwargs = {"name": self.device_name + '_main',
                           "port": port,
-                          "baud_rate": baud_rate
+                          "baud_rate": baud_rate,
+                          "num_AO": num_AO
                           }
         
         self.create_worker(
@@ -53,4 +90,18 @@ class BS110Tab(DeviceTab):
             worker_kwargs, 
             )
         self.primary_worker = "main_worker"
-        
+
+    @define_state(MODE_MANUAL, True)
+    def send_to_BS(self):
+        """Queue a manual send-to-device operation from the GUI.
+
+            This function is triggered from the BLACS tab (by pressing a button)
+            and runs in the main thread. It queues the `send2BS()` function to be
+            executed by the worker.
+
+            Used to reprogram the BS-1-10 device based on current front panel values.
+            """
+        try:
+            yield(self.queue_work(self.primary_worker, 'send_to_BS', []))
+        except Exception as e:
+            logger.debug(f"Error by send work to worker(send_to_BS): \t {e}")
