@@ -32,7 +32,9 @@ class BNC_575Worker(Worker):
         """Allows for user control of the device via the BLACS_tab, 
         setting outputs to the values set in the BLACS_tab widgets. 
         Runs at the end of the shot.
-        setting the pulse width, delay and period --> ok\r\n
+
+        We don't want to set channel parameters at manual mode, as it could not be clocked then.
+            setting the pulse width, delay and period --> ok\r\n
         """
         print(f"front panel values: {front_panel_values}")
         self.check_remote_values()
@@ -56,12 +58,17 @@ class BNC_575Worker(Worker):
             print("======== Device Properties : ", self.device_prop, "=========")
 
         # Setting the pulse generator
-        # TODO:
-        self.generator.disable_trigger()
-        self.generator.start_pulses()
-        self.generator.enable_output(2)
-        self.generator.set_delay(2, 3)
-        self.generator.set_width(2, 2)
+        pulse_program = group['PULSE_PROGRAM']
+
+        # Get the final state of pulse generator (restore the state in transition_to_manual to update GUI)
+        self.final_state = pulse_program[-1]
+
+
+        # self.generator.disable_trigger()
+        # self.generator.start_pulses()
+        # self.generator.enable_output(2)
+        # self.generator.set_delay(2, 3)
+        # self.generator.set_width(2, 2)
 
         print(f"---------- END transition to Buffered: ----------")
         return

@@ -35,7 +35,10 @@ def test_serial():
             print(f"command {command}")
             logger.debug(f"command from remote: {command} ")
             if command.startswith("*IDN?"):
-                response = "OK_IDN_cames\r\n"
+                response = "OK_IDN_came\r\n"
+                os.write(master, response.encode())
+            elif command.startswith(":PULS"):
+                response = 'ok\r\n'
                 os.write(master, response.encode())
             else:
                 response = "err\r"

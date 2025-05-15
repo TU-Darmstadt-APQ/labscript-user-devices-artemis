@@ -28,12 +28,17 @@ class PulseGenerator:
 
     def start_pulses(self):
         self.connection.write((':PULSE0:STATE ON\r\n').encode())
+        self.receive_from_BNC()
 
     def end_pulses(self):
         self.connection.write((':PULSE0:STATE OFF\r\n').encode())
+        self.receive_from_BNC()
+
 
     def reset_device(self): # Resets to default state
         self.connection.write(('*RST\r\n').encode())
+        self.receive_from_BNC()
+
 
     def set_mode(self, mode):
         """ Set the mode of the pulse generator.
@@ -43,6 +48,8 @@ class PulseGenerator:
         if mode not in ['NORMAL', 'SINGLE', 'BURST']:
             raise ValueError("Invalid mode. Choose from 'NORMAL', 'SINGLE', 'BURST'.")
         self.connection.write((f':PULSE0:MODE {mode}\r\n').encode())
+        self.receive_from_BNC()
+
 
     def set_period(self, period):
         """ Set the period of the pulse generator.
@@ -50,9 +57,13 @@ class PulseGenerator:
             period (float): The period in seconds. Range: 100ns-5000s
         """
         self.connection.write((f':PULSE0:PERIOD {period}\r\n').encode())
+        self.receive_from_BNC()
+
 
     def disable_trigger(self):
         self.connection.write((f":PULSE0:TRIGger:MODe DISabled \r\n").encode())
+        self.receive_from_BNC()
+
 
     ### Basic channel commands
 
@@ -62,37 +73,47 @@ class PulseGenerator:
             channel (int): The channel number (1-7).
         """
         self.connection.write((f':PULSE{channel}:STATE ON\r\n').encode())
+        self.receive_from_BNC()
+
 
     def disable_output(self, channel):
         """ Enable the output of the specified channel.
         Args:
-            channel (int): The channel number (1-7).
+            channel (int): The channel number (1-8).
         """
         self.connection.write((f':PULSE{channel}:STATE OFF\r\n').encode())
+        self.receive_from_BNC()
+
 
     def set_delay(self, channel, delay):
         """ Set the delay to the specified channel.
         Args:
-            channel (int): The channel number (1-7).
+            channel (int): The channel number (1-8).
             delay (float): The delay in seconds.
         """
         self.connection.write((f':PULSE{channel}:DELAY {delay}\r\n').encode())
+        self.receive_from_BNC()
+
 
     def set_width(self, channel, width):
         """ Set the width to the specified channel.
         Args:
-            channel (int): The channel number (1-7).
+            channel (int): The channel number (1-8).
             width (float): The width in seconds.
         """
         self.connection.write((f':PULSE{channel}:WIDTH {width}\r\n').encode())
+        self.receive_from_BNC()
 
-    ### Basic queries
+
+    ### helpfer
 
     def receive_from_BNC(self):
         try:
             response = self.connection.readline().decode().strip()
-            logger.debug(f"Received from Serial: {response}")
-            return response
+            logger.debug(f"Received from BNC Serial: {response}")
+            if(reponse != 'ok\r\n'):
+                raise LabscriptError(f'Failed to execute command: {response} != "ok\r\n"')
+            return True
         except Exception as e:
             logger.error(f"Serial read failed: {e}")
             return 'SERIAL_ERROR'
