@@ -21,23 +21,23 @@ def test_serial():
     master, slave = pty.openpty()
     port_name = os.ttyname(slave)
     print(f"For BS 34-1A use: {port_name}")
-    
+
     while True:
-        device_identity = "BS341 5 4 b\r"
+        device_identity = "HV341 14 4 b\r"
         command = read_command(master).decode().strip()
         if command:
             print("command {}".format(command))
             if command == "IDN":
                 response = device_identity.encode()
                 os.write(master, response)
-            elif command.startswith("BS341 CH"):
+            elif command.startswith("HV341 CH"):
                 device, channel, voltage = command.split()[:3]
                 response = f"{channel} {voltage}\r"
                 os.write(master, response.encode())
-            else: 
+            else:
                 response = f"err\r"
                 os.write(master, response.encode())
-                
+
         time.sleep(0.1)
 
 def read_command(master):
