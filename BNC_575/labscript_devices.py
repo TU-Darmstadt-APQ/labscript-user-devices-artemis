@@ -139,7 +139,6 @@ class BNC_575(TriggerableDevice):
             ('trigger_level', np.int32)
         ]
 
-        # todo: remake it
         system_configuration = np.empty(1, dtype=system_dtypes)
 
         for k, v in self.t0_config.items():
@@ -164,7 +163,6 @@ class BNC_575(TriggerableDevice):
 
 
         # channel configuration
-        # self.output_num = 8 # todo: pull from connection table
         self.output_num = len(self.child_devices)
         channels_dtypes = [ #should be the same as 'properties' attribute of PulseChannel
             ('channel', np.int32),

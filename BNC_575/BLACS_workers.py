@@ -24,7 +24,6 @@ class BNC_575Worker(Worker):
         print(f"front panel values: {front_panel_values}")
 
     def transition_to_buffered(self, device_name, h5_file, initial_values, fresh):
-        # todo: configure device according to properties set in connection table h5 file.
         print(f"---------- Begin transition to Buffered: ----------")
 
         self.h5file = h5_file
