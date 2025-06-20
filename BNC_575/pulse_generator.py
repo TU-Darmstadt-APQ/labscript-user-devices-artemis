@@ -12,108 +12,164 @@ class PulseGenerator:
                  baud_rate,
                  verbose=False
                  ):
-        logger.debug(f"<initialising Pulse Generator>")
+        logger.info(f"<initialising Pulse Generator>")
         self.verbose = verbose
         self.port = port
         self.baud_rate = baud_rate
 
         # connecting to connectionice
-        self.connection = serial.Serial(self.port, self.baud_rate, timeout=1)
-        print(f'Initialized: {self.connection.write(("*IDN?\r\n)").encode())}') # manufacturer,modelNo,serialNo,versionNo
+        self.connection = serial.Serial(self.port, self.baud_rate, timeout=0.08) # what is the exact response time
+        logger.info(f"Pulse Generator Serial connection opened on {self.port} at {self.baud_rate} bps")
+        identity = self.identify_device()
+        print(f"Connected to {identity}")
+        logger.debug(f"Received from BNC Serial: {identity}")
 
         # initialize connection
         self.reset_device()
+        self.set_baud_rate(baud_rate)
+
+    ### Common commands
+
+    def identify_device(self):  # Returns identification
+        self.connection.write(('*IDN?\r\n').encode())
+        response = self.connection.readline().decode().strip()
+        return response
+
+    def reset_device(self): # Resets to default state
+        self.send_command('*RST')
+
+    def set_baud_rate(self, baud_rate):
+        self.send_command(f':SYST:SER:BAUD {baud_rate}')
+
+    def generate_trigger(self):
+        self.send_command('*TRG')
 
     ### Basic intern system commands
 
-    def start_pulses(self):
-        self.connection.write((':PULSE0:STATE ON\r\n').encode())
-        self.receive_from_BNC()
+    def enable_output_for_all(self):
+        """Enable output on all channels."""
+        self.send_command(':PULSE0:STATE ON')
 
-    def end_pulses(self):
-        self.connection.write((':PULSE0:STATE OFF\r\n').encode())
-        self.receive_from_BNC()
+    def disable_output_for_all(self):
+        self.send_command(':PULSE0:STATE OFF')
 
-
-    def reset_device(self): # Resets to default state
-        self.connection.write(('*RST\r\n').encode())
-        self.receive_from_BNC()
-
-
-    def set_mode(self, mode):
+    def set_t0_mode(self, mode):
         """ Set the mode of the pulse generator.
         Args:
             mode (str): The mode to set. Options are 'NORMAL', 'SINGLE', 'BURST'.
         """
-        if mode not in ['NORMAL', 'SINGLE', 'BURST']:
-            raise ValueError("Invalid mode. Choose from 'NORMAL', 'SINGLE', 'BURST'.")
-        self.connection.write((f':PULSE0:MODE {mode}\r\n').encode())
-        self.receive_from_BNC()
+        mode = self._normalize(mode)
+        if mode not in ['NORMAL', 'SINGLE', 'BURST', 'DCYCLE']:
+            raise ValueError(f"Invalid t0 mode={mode}. Choose from 'NORMal', 'SINGLe', 'BURSt', 'DCYCLe'.")
+        self.send_command(f':PULSE0:MODE {mode}')
 
-
-    def set_period(self, period):
+    def set_t0_period(self, period):
         """ Set the period of the pulse generator.
         Args:
             period (float): The period in seconds. Range: 100ns-5000s
         """
-        self.connection.write((f':PULSE0:PERIOD {period}\r\n').encode())
-        self.receive_from_BNC()
+        self.send_command(f':PULSE0:PER {period}')
 
+    def set_trigger_mode(self, mode):
+        self.send_command(f":PULSE0:TRIG:MOD {self._normalize(mode)}")
 
-    def disable_trigger(self):
-        self.connection.write((f":PULSE0:TRIGger:MODe DISabled \r\n").encode())
-        self.receive_from_BNC()
+    def set_trigger_logic(self, trigger_logic):
+        self.send_command(f":PULSE0:TRIG:LOG {trigger_logic}")
 
+    def set_trigger_level(self, trigger_level):
+        self.send_command(f":PULSE0:TRIG:LEV {trigger_level}")
 
-    ### Basic channel commands
+    ### Channel/system combined commands
+
+    def set_burst_counter(self, channel, burst_count):
+        """Set burst count for a given channel. Or for all channels if channel=0"""
+        self.send_command(f":PULSE{channel}:BCO {burst_count}")
+
+    def set_on_counter(self, channel, on_count):
+        """Set ON count for DCYCLe mode."""
+        self.send_command(f":PULSE{channel}:PCO {on_count}")
+
+    def set_off_counter(self, channel, off_count):
+        """Set OFF count for DCYCLe mode."""
+        self.send_command(f":PULSE{channel}:OCO {off_count}")
+
+    ### Channel specific commands
 
     def enable_output(self, channel):
-        """ Enable the output of the specified channel.
-        Args:
-            channel (int): The channel number (1-7).
-        """
-        self.connection.write((f':PULSE{channel}:STATE ON\r\n').encode())
-        self.receive_from_BNC()
-
+        """Enable output on a specific channel."""
+        self.send_command(f':PULSE{channel}:STATE ON')
 
     def disable_output(self, channel):
-        """ Enable the output of the specified channel.
-        Args:
-            channel (int): The channel number (1-8).
-        """
-        self.connection.write((f':PULSE{channel}:STATE OFF\r\n').encode())
-        self.receive_from_BNC()
-
+        """Disable output on a specific channel."""
+        self.send_command(f':PULSE{channel}:STATE OFF')
 
     def set_delay(self, channel, delay):
         """ Set the delay to the specified channel.
         Args:
-            channel (int): The channel number (1-8).
+            channel (int): The channel number [1:8].
             delay (float): The delay in seconds.
         """
-        self.connection.write((f':PULSE{channel}:DELAY {delay}\r\n').encode())
-        self.receive_from_BNC()
-
+        self.send_command(f':PULSE{channel}:DELAY {delay}')
 
     def set_width(self, channel, width):
         """ Set the width to the specified channel.
         Args:
-            channel (int): The channel number (1-8).
+            channel (int): The channel number [1:8].
             width (float): The width in seconds.
         """
-        self.connection.write((f':PULSE{channel}:WIDTH {width}\r\n').encode())
-        self.receive_from_BNC()
+        self.send_command(f':PULSE{channel}:WIDTH {width}')
+
+    def select_sync_source(self, channel, sync_source):
+        self.send_command(f':PULSE{channel}:SYNC {self._normalize(sync_source)}')
+
+    def set_mode(self, channel, mode):
+        """ Set the mode of the pulse generator.
+        Args:
+            channel (int): Channel number [1:8]
+            mode (str): The mode to set. Options are 'NORMAL', 'SINGLE', 'BURST'.
+        """
+        mode = self._normalize(mode)
+        if mode not in ['NORMAL', 'SINGLE', 'BURST', 'DCYCLE']:
+            raise ValueError(f"Invalid mode={mode}. Choose from 'NORMAL', 'SINGLE', 'BURST', 'DCYCLE'.")
+        self.send_command(f':PULSE{channel}:CMODe {mode}')
+
+    def set_output_mode(self, channel, output_mode):
+        if isinstance(output_mode, bytes):
+            output_mode = output_mode.decode('utf-8')
+        if output_mode.upper() not in ['TTL', 'ADJUSTABLE']:
+            raise ValueError(f"Invalid mode={output_mode}. Choose from 'TTL', 'ADJustable'")
+        self.send_command(f':PULSE{channel}:OUTPut:MODe {output_mode}')
+
+    def set_output_amplitude(self, channel, amplitude):
+        if not (2.0 <= amplitude <= 20.0):
+            raise ValueError("Amplitude must be between 2.0V and 20.0V.")
+        self.send_command(f':PULSE{channel}:OUTPut:AMP {amplitude}')
+
+    def set_polarity(self, channel, polarity):
+        polarity = self._normalize(polarity)
+        if polarity not in ['NORMAL', 'COMPLEMENT', 'INVERTED']:
+            raise ValueError(f"Invalid polarity={polarity}. Choose from [NORMal / COMPlement / INVerted]")
+        self.send_command(f':PULSE{channel}:POL {polarity}')
 
 
-    ### helpfer
+    ### helpers
+    def send_command(self, cmd: str):
+        logger.debug(f"Sending to BNC Serial: {cmd}")
+        self.connection.write((cmd + '\r\n').encode())
+        return self.receive_from_BNC()
 
     def receive_from_BNC(self):
         try:
             response = self.connection.readline().decode().strip()
             logger.debug(f"Received from BNC Serial: {response}")
-            if(reponse != 'ok\r\n'):
-                raise LabscriptError(f'Failed to execute command: {response} != "ok\r\n"')
+            if not response or response.lower() != 'ok':
+                raise LabscriptError(f'Device responded with error:  {response}')
             return True
         except Exception as e:
             logger.error(f"Serial read failed: {e}")
             return 'SERIAL_ERROR'
+
+    def _normalize(self, value):
+        if isinstance(value, bytes):
+            value = value.decode('utf-8')
+        return str(value).strip().upper()

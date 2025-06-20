@@ -1,14 +1,10 @@
-import labscript_utils.h5_lock # TODO: im not sure if it this neccessary and what it does exactly
+import labscript_utils.h5_lock # FIXME: WHY????
 import h5py
-import serial
 import numpy as np
 from blacs.tab_base_classes import Worker
 from labscript import LabscriptError
 from labscript_utils import properties
-
-
 from user_devices.logger_config import logger
-import time
 
 
 class BNC_575Worker(Worker):
@@ -16,59 +12,76 @@ class BNC_575Worker(Worker):
         """Initializes connection to BNC_575 device (USB pretending to be virtual COM port)"""
 
         try:
-            # self.connection = serial.Serial(self.port, self.baud_rate, timeout=1)
-            # logger.debug("<trying to initialise pulse Generator  directly in workers>")
             from .pulse_generator import PulseGenerator
             self.generator = PulseGenerator(self.port, self.baud_rate, verbose=False)
-            logger.info(f"Pulse Generator Serial connection opened on {self.port} at {self.baud_rate} bps")
         except Exception as e:
             raise LabscriptError(f"Serial connection failed: {e}")
            
     def shutdown(self):
-        # Should be done when Blacs is closed
         self.connection.close()
 
-    def program_manual(self, front_panel_values): 
-        """Allows for user control of the device via the BLACS_tab, 
-        setting outputs to the values set in the BLACS_tab widgets. 
-        Runs at the end of the shot.
-
-        We don't want to set channel parameters at manual mode, as it could not be clocked then.
-            setting the pulse width, delay and period --> ok\r\n
-        """
+    def program_manual(self, front_panel_values):
         print(f"front panel values: {front_panel_values}")
-        self.check_remote_values()
 
-    def check_remote_values(self): # reads the current settings of the device, updating the BLACS_tab widgets 
-        return
-
-    def transition_to_buffered(self, device_name, h5_file, initial_values, fresh): 
-        """transitions the device to buffered shot mode, 
-        reading the shot h5 file and taking the saved instructions from 
-        labscript_device.generate_code and sending the appropriate commands 
-        to the hardware. 
-        Runs at the start of each shot."""
-        # Get device properties
+    def transition_to_buffered(self, device_name, h5_file, initial_values, fresh):
+        # todo: configure device according to properties set in connection table h5 file.
         print(f"---------- Begin transition to Buffered: ----------")
 
         self.h5file = h5_file
-        with h5py.File(h5_file, 'r') as hdf5_file: # read only
+        with h5py.File(h5_file, 'r') as hdf5_file:
             group = hdf5_file['devices'][device_name]
-            self.device_prop = properties.get(hdf5_file, device_name, 'device_properties')
-            print("======== Device Properties : ", self.device_prop, "=========")
+            system_data = group['system_timer'][0]
+            channels_data = group['channel_timer'][:]
 
-        # Setting the pulse generator
-        pulse_program = group['PULSE_PROGRAM']
+        # Configure internal system
+        self.generator.set_t0_period(system_data['period'])
+        self.generator.set_t0_mode(system_data['mode'])
 
-        # Get the final state of pulse generator (restore the state in transition_to_manual to update GUI)
-        self.final_state = pulse_program[-1]
+        mode = system_data['mode'].upper().decode('utf-8')
+        if mode == 'BURST' and system_data['burst_count'] != -1:
+            self.generator.set_burst_counter(0, system_data['burst_count'])
+            logger.info(f"T0 timer mode is BURST with burst_count = {system_data['burst_count']}")
+        elif mode == 'DCYCLE' and system_data['on_count'] != -1 and system_data['off_count'] != -1:
+            self.generator.set_on_counter(0, system_data['on_count'])
+            self.generator.set_off_counter(0, system_data['off_count'])
+            logger.info(f"T0 timer mode is DCYCLE with (on_count, off_count) = ({system_data['on_count']}, {system_data['off_count']})")
+        elif mode in ('NORMAL', 'SINGLE'):
+            logger.info(f"T0 timer mode is {mode}")
+        else:
+            raise ValueError(f"Invalid T0 timer mode: {mode}. Select from: [NORMAL / SINGLE / BURST / DCYCLE]")
+
+        self.generator.set_trigger_mode(system_data['trigger_mode'])
+        if system_data['trigger_mode'].upper() == 'TRIGGERED':
+            self.generator.set_trigger_logic(system_data['trigger_logic'])
+            self.generator.set_trigger_level(system_data['trigger_level'])
 
 
-        # self.generator.disable_trigger()
-        # self.generator.start_pulses()
-        # self.generator.enable_output(2)
-        # self.generator.set_delay(2, 3)
-        # self.generator.set_width(2, 2)
+        # Configure separate channels
+        for channel in channels_data:
+            ch = channel['channel']  # channel number starting from 1
+            self.generator.enable_output(ch)
+            self.generator.set_mode(ch, channel['mode'])
+
+            output_mode = channel['mode'].upper().decode('utf-8')
+            if output_mode == 'BURST' and channel['burst_count'] != -1:
+                self.generator.set_burst_counter(ch, channel['burst_count'])
+                logger.info(f"Channel {ch} timer mode is BURST with burst_count = {channel['burst_count']}")
+            elif output_mode == 'DCYCLE' and channel['on_count'] != -1 and channel['off_count'] != -1:
+                self.generator.set_on_counter(0, channel['on_count'])
+                self.generator.set_off_counter(0, channel['off_count'])
+                logger.info(f"Channel {ch} timer mode is DCYCLE with (on_count, off_count) = ({channel['on_count']}, {channel['off_count']})")
+            elif output_mode in ('NORMAL', 'SINGLE'):
+                logger.info(f"Channel {ch} timer mode is {mode}")
+            else:
+                raise ValueError(f"Invalid T0 timer mode: {mode}. Select from: [NORMAL / SINGLE / BURST / DCYCLE]")
+
+            self.generator.set_delay(ch, channel['delay'])
+            self.generator.set_width(ch, channel['width'])
+            self.generator.set_output_mode(ch, channel['output_mode'])
+            if channel['output_mode'].upper() == 'ADJUSTABLE':
+                self.generator.set_output_amplitude(ch, channel['amplitude'])
+            self.generator.select_sync_source(ch, channel['sync_source'])
+            self.generator.set_polarity(ch, channel['polarity'])
 
         print(f"---------- END transition to Buffered: ----------")
         return
@@ -82,19 +95,6 @@ class BNC_575Worker(Worker):
             bool: `True` if transition to manual is successful.
         """
         print(f"---------- Begin transition to Manual: ----------")
-        data = np.empty(5, dtype='<U20')
-        data = [f"Stringing {d}" for d in [1, 2, 3, 4, 5]]
-
-        with h5py.File(self.h5file, 'r+') as hdf_file:
-            if '/data' not in hdf_file:
-                group = hdf_file.create_group('/data')
-            else:
-                group = hdf_file['/data']
-
-            if self.device_name in group:
-                print(f"Dataset {self.device_name} already exists. Overwriting.")
-                del group[self.device_name]
-
         print(f"---------- END transition to Manual: ----------")
         return True
 
@@ -106,17 +106,6 @@ class BNC_575Worker(Worker):
             print(f"Failed to abort properly: {e}")
             return
 
-    def abort_buffered(self):
-        """Aborts a currently running buffered execution.
-
-        Returns:
-            bool: `True` is abort was successful.
-        """
-        # self.intf.send_command_ok('abt')
-        # # loop until abort complete
-        # while self.intf.status()[0] != 5:
-        #     time.sleep(0.5)
-        # return True
 
     
         

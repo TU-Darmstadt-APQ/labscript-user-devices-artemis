@@ -33,18 +33,15 @@ def test_serial():
         command = read_command(master).decode()
         if command:
             print(f"command {command}")
-            logger.debug(f"command from remote: {command} ")
             if command.startswith("*IDN?"):
                 response = "OK_IDN_came\r\n"
                 os.write(master, response.encode())
-            elif command.startswith(":PULS"):
+            elif command.startswith(":PULS") or command.startswith(":SYSTem") or command.startswith("*"):
                 response = 'ok\r\n'
                 os.write(master, response.encode())
             else:
                 response = "err\r"
                 os.write(master, response.encode())
-                
-        #time.sleep(0.1)
          
 if __name__ == "__main__":
     test_serial()
