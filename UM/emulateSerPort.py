@@ -10,16 +10,19 @@ In the userlib directory, run the following command:
 
 """
 import os, pty, time
-from logger_config import logger
+
 
 def read_command(master):
     """ Reads the command until the '\r' character is encountered.
     Args:
         master: file descriptor to read from
-    Returns: 
+    Returns:
         received command in bytes format
     """
-    return b"".join(iter(lambda: os.read(master, 1), b"\r"))
+    buffer = b""
+    while not buffer.endswith(b"\r"):
+        buffer += os.read(master, 1)
+    return buffer.strip()
 
 def test_serial():
     master, slave = pty.openpty()
@@ -39,18 +42,16 @@ def test_serial():
                 response = f"{channel} {voltage}\r"
                 os.write(master, response.encode())
             elif command.startswith("UM01 ULTRA"):
-                device, mode, sec_channel = command.split()[:3]
-                response = f"{mode} {sec_channel}\r"
+                device, mode, channel_set = command.split()[:3]
+                response = f"{mode} {channel_set}\r"
                 os.write(master, response.encode())
             elif command.startswith("UM01 ULTRA"):
-                device, mode, sec_channel = command.split()[:3]
-                response = f"{mode} {sec_channel}\r"
+                device, mode, channel_set = command.split()[:3]
+                response = f"{mode} {channel_set}\r"
                 os.write(master, response.encode())
             else:
                 response = "err\r"
                 os.write(master, response.encode())
-                
-        time.sleep(0.1)
          
 if __name__ == "__main__":
     test_serial()

@@ -25,3 +25,7 @@ CHXX
 03 - B'                 20 - B'
 05 - C'                 21 - C'
 
+connections: 
+
+for A, B, C, A', B', C' --> CH A, CH B
+for 1, 2, 3, 4 .. 10 --> 1, 2, 3
