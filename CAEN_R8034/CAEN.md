@@ -14,5 +14,7 @@ USB/Ethernet
     response = "#PAR:ERR\r\n"
 
 ---
-The unit is automatically recognised by Linux; unit name is assigned to serial port with name /dev/ttyACM[x], where x is the device number. 
+The unit is automatically recognised by Linux; 
+unit name is assigned to serial port with name /dev/ttyACM[x], 
+where x is the device number. 
 
