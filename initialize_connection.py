@@ -28,13 +28,15 @@ from user_devices.CAEN_R8034.labscript_devices import CAEN
 from user_devices.BNC_575.labscript_devices import BNC_575
 from user_devices.BS_cryo.models.BS_1_10 import BS_1_10
 from user_devices.BS_cryo.models.BS_1_8 import BS_1_8
+from user_devices.HV_stahl.models.HV_200_8 import HV_200_8
+from user_devices.HV_stahl.models.HV_250_8 import HV_250_8
+from user_devices.HV_stahl.models.HV_500_8 import HV_500_8
 # from labscript_devices.BS_Series.models.BS_341A_spec import BS_341A_spec
 # from labscript_devices.BS_Series.models.BS_341A import BS_341A
 
 
 def init_UM():
     UM(name='UM', parent_device=clockline, port='/dev/pts/6', baud_rate=9600)
-
     AnalogOut(name="CRES 1", parent_device=UM, connection='CH 1')
     AnalogOut(name="CRES 2", parent_device=UM, connection='CH 2')
     AnalogOut(name="CRES 3", parent_device=UM, connection='CH 3')
@@ -83,3 +85,24 @@ def init_CAEN():
     AnalogOut(name='AO_1', parent_device=voltage_source_serial, connection='CH0', default_value=0)
     AnalogOut(name='AO_2', parent_device=voltage_source_serial, connection='CH1', default_value=0)
     AnalogOut(name='AO_3', parent_device=voltage_source_serial, connection='CH3', default_value=0)
+
+def init_HV_200_8(clockline):
+    HV_200_8(name="power_supply_for_ST", parent_device=clockline, port='/dev/pts/4')
+    AnalogOut(name='AO_ST_1', parent_device=power_supply_for_ST, connection='CH 1', default_value=0)
+    AnalogOut(name='AO_ST_2', parent_device=power_supply_for_ST, connection='CH 2', default_value=0)
+    AnalogOut(name='AO_ST_3', parent_device=power_supply_for_ST, connection='CH 3', default_value=0)
+    AnalogOut(name='AO_ST_4', parent_device=power_supply_for_ST, connection='CH 4', default_value=0)
+
+def init_HV_250_8(clockline):
+    HV_200_8(name="power_supply_for_CT", parent_device=clockline, port='/dev/pts/6')
+    AnalogOut(name='AO_ST_1', parent_device=power_supply_for_CT, connection='CH 1', default_value=0)
+    AnalogOut(name='AO_ST_2', parent_device=power_supply_for_CT, connection='CH 2', default_value=0)
+    AnalogOut(name='AO_ST_3', parent_device=power_supply_for_CT, connection='CH 3', default_value=0)
+    AnalogOut(name='AO_ST_4', parent_device=power_supply_for_CT, connection='CH 4', default_value=0)
+
+def init_HV_500_8(clockline):
+    HV_200_8(name="power_supply_for_E14", parent_device=clockline, port='/dev/pts/4')
+    AnalogOut(name='AO_E14_1', parent_device=power_supply_for_E14, connection='CH 1', default_value=0)
+    AnalogOut(name='AO_E14_2', parent_device=power_supply_for_E14, connection='CH 2', default_value=0)
+    AnalogOut(name='AO_E14_3', parent_device=power_supply_for_E14, connection='CH 3', default_value=0)
+    AnalogOut(name='AO_E14_4', parent_device=power_supply_for_E14, connection='CH 4', default_value=0)
