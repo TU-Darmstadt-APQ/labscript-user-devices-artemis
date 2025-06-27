@@ -1,0 +1,85 @@
+'''
+    This is a simple file that shows you the minimal elements you need
+    to write your own experimental sequence.
+'''
+import numpy as np
+from labscript import (
+    AnalogIn,
+    AnalogOut,
+    ClockLine,
+    DDS,
+    DigitalOut,
+    MHz,
+    Shutter,
+    StaticDDS,
+    WaitMonitor,
+    start,
+    stop,
+    wait,
+)
+
+from labscript import start, stop, add_time_marker, AnalogOut, DigitalOut, ClockLine
+from labscript import *
+from labscriptlib.example_apparatus import *
+from labscript_devices.DummyPseudoclock.labscript_devices import DummyPseudoclock
+from labscript_devices.DummyIntermediateDevice import DummyIntermediateDevice
+from user_devices.UM.labscript_devices import UM
+from user_devices.CAEN_R8034.labscript_devices import CAEN
+from user_devices.BNC_575.labscript_devices import BNC_575
+from user_devices.BS_cryo.models.BS_1_10 import BS_1_10
+from user_devices.BS_cryo.models.BS_1_8 import BS_1_8
+# from labscript_devices.BS_Series.models.BS_341A_spec import BS_341A_spec
+# from labscript_devices.BS_Series.models.BS_341A import BS_341A
+
+
+def init_UM():
+    UM(name='UM', parent_device=clockline, port='/dev/pts/6', baud_rate=9600)
+
+    AnalogOut(name="CRES 1", parent_device=UM, connection='CH 1')
+    AnalogOut(name="CRES 2", parent_device=UM, connection='CH 2')
+    AnalogOut(name="CRES 3", parent_device=UM, connection='CH 3')
+    AnalogOut(name="CRES 4", parent_device=UM, connection='CH 4')
+    AnalogOut(name="CRES 5", parent_device=UM, connection='CH 5')
+
+def init_BNC_575():
+    BNC_575(name='pulse_generator', port='/dev/pts/2', baud_rate=115200)
+    AnalogOut(name='pulse_1', connection='pulse 1', parent_device=pulse_generator)
+    AnalogOut(name='pulse_2', connection='pulse 2', parent_device=pulse_generator)
+    AnalogOut(name='pulse_3', connection='pulse 3', parent_device=pulse_generator)
+    AnalogOut(name='pulse_4', connection='pulse 4', parent_device=pulse_generator)
+
+def init_BS_10(clockline):
+    BS_1_10(name='bias_supply_10', parent_device=clockline, port='/dev/pts/1', baud_rate=115200)
+    AnalogOut(name='BS_110_analog_output_1', parent_device=bias_supply_10, connection='CH 1', default_value=2.22)
+    AnalogOut(name='BS_110_analog_output_2', parent_device=bias_supply_10, connection='CH 4')
+    AnalogOut(name='BS_110_analog_output_3', parent_device=bias_supply_10, connection='CH 3')
+    AnalogOut(name='BS_110_analog_output_4', parent_device=bias_supply_10, connection='CH 2', default_value=3.33)
+
+
+def init_BS_8(clockline):
+    BS_1_8(name='bias_supply_8', parent_device=clockline, port='/dev/pts/4', baud_rate=115200)
+    AnalogOut(name='BS_18_analog_output_1', parent_device=bias_supply_8, connection='CH 1', default_value=4.44)
+    AnalogOut(name='BS_18_analog_output_2', parent_device=bias_supply_8, connection='CH 4')
+    AnalogOut(name='BS_18_analog_output_3', parent_device=bias_supply_8, connection='CH 3')
+    AnalogOut(name='BS_18_analog_output_4', parent_device=bias_supply_8, connection='CH 2', default_value=5.55)
+
+# def init_BS_341A_spec():
+#     BS_341A_spec(name='precision_voltage_source_for_ST', parent_device=clockline, port='/dev/pts/3', baud_rate=9600)
+#     AnalogOut(name='ao0_bs', parent_device=precision_voltage_source_for_ST, connection='CH 1', default_value=1.23)
+#     AnalogOut(name='ao1_bs', parent_device=precision_voltage_source_for_ST, connection='CH 2')
+#
+# def init_BS_341A():
+#     BS_341A_spec(name='source_for_ST', parent_device=clockline, port='/dev/pts/3', baud_rate=9600)
+#     AnalogOut(name='ao0_bs_norm', parent_device=source_for_ST, connection='CH 1', default_value=1.23)
+#     AnalogOut(name='ao1_bs_norm', parent_device=source_for_ST, connection='CH 2')
+
+def init_CAEN():
+    CAEN(
+        name='voltage_source_serial',
+        parent_device=clockline,
+        port='/dev/pts/4',
+        baud_rate=9600
+    )
+    AnalogOut(name='AO_1', parent_device=voltage_source_serial, connection='CH0', default_value=0)
+    AnalogOut(name='AO_2', parent_device=voltage_source_serial, connection='CH1', default_value=0)
+    AnalogOut(name='AO_3', parent_device=voltage_source_serial, connection='CH3', default_value=0)

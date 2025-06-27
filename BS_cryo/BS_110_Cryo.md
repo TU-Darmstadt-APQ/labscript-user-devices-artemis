@@ -33,3 +33,14 @@ DDDDD CHXX Y.YYYYY | Set voltage
 DDDDD TEMP | Read Temperature
 DDDDD LOCK | Check lock status of all channels
 DDDDD DIS [message] | Send string to LCD-display
+
+## To extend the BS_Series in labscript_devices
+TO CHANGE: in BS Series the channel name / connection from connection table names formate
+TO CHANGE: on BS cryo:
+- logger importing
+- in [register_classes](BS_cryo/register_classes.py): lines 15, 16, 26
+- in [workers](BS_cryo/BLACS_workers.py): lines 14, 27-28, 161, 115
+- in [tabs](BS_cryo/BLACS_tabs.py): lines 9, 88
+- in [labscript_devices](BS_cryo/labscript_devices.py): lines 10-11
+- in [models/BS_1_X](BS_cryo/models/BS_1_10.py): lines 1, 8, 11-12, 15, 18
+- in [models/__init__](BS_cryo/models/__init__.py): lines 17

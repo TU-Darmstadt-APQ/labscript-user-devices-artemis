@@ -6,7 +6,7 @@ class BNC_575Tab(DeviceTab):
     def initialise_GUI(self):
         do_prop = {}
         for i in range(1, 9): # fixme
-            do_prop['flag{:01d}'.format(i)] = {}
+            do_prop['pulse {:01d}'.format(i)] = {}
         self.create_digital_outputs(do_prop)
         _, _, do_widgets = self.auto_create_widgets()
         self.auto_place_widgets(('Digital Outputs/Flags', do_widgets))

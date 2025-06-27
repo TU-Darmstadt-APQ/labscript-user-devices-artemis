@@ -1,0 +1,16 @@
+{
+  "BS_1_10": {
+    "static_AO": 0,
+    "num_AO": 10,
+    "baud_rate": 9600,
+    "supports_custom_voltages_per_channel": false,
+    "default_voltage_range": [-10, 10]
+  },
+  "BS_1_8": {
+    "static_AO": 0,
+    "num_AO": 8,
+    "baud_rate": 9600,
+    "supports_custom_voltages_per_channel": false,
+    "default_voltage_range": [-10, 10]
+  }
+}

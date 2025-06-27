@@ -6,7 +6,7 @@ You will create a virtual serial port using this script. This script will act as
 The virtual serial port should stay open while the simulation is running, so other code that expects to interact with the serial device can do so just as if the actual device were connected.
 
 In the userlib directory, run the following command:
-    python3 -m user_devices.BS_110.emulateSerPort
+    python3 -m user_devices.BS_cryo.emulateSerPort
 
 """
 
@@ -20,7 +20,7 @@ def test_serial():
     """
     master, slave = pty.openpty()
     port_name = os.ttyname(slave)
-    print(f"For BS 1-10 use: {port_name}")
+    print(f"For BS cryo use: {port_name}")
     
     while True:
         try:

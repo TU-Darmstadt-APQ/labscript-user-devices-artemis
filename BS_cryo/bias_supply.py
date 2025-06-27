@@ -4,18 +4,23 @@ from labscript.labscript import LabscriptError
 from user_devices.logger_config import logger
 
 class BiasSupply:
-    """ Bias Suppply BS-1-10 class to establish and maintain the communication with the connection.
+    """ Voltage Source class to establish and maintain the communication with the connection.
     """
-
     def __init__(self,
                  port,
                  baud_rate,
+                 supports_custom_voltages_per_channel,
+                 default_voltage_range,
+                 AO_ranges,
                  verbose=False
                  ):
-        logger.debug(f"<initialising Bias Supply BS-110>")
+        logger.debug(f"[BS_cryo] <initialising Bias Supply>")
         self.verbose = verbose
         self.port = port
         self.baud_rate = baud_rate
+        self.supports_custom_voltages_per_channel = supports_custom_voltages_per_channel
+        self.default_voltage_range = default_voltage_range
+        self.AO_ranges = AO_ranges
 
         # connecting to connectionice
         self.connection = serial.Serial(self.port, self.baud_rate, timeout=1)
@@ -33,47 +38,50 @@ class BiasSupply:
                LabscriptError: If identity format is incorrect.
            """
         self.connection.write("IDN\r".encode())
-        raw_response = self.connection.readline().decode()
+        raw_response = self.connection.read_until(b'\r').decode()
         identity = raw_response.split()
 
         if len(identity) == 4:
-            logger.debug(f"Device initialized with identity: {identity}")
+            logger.debug(f"[BS_cryo] Device initialized with identity: {identity}")
             return identity
         else:
             raise LabscriptError(
                 f"Device identification failed.\n"
                 f"Raw identity: {raw_response!r}\n"
                 f"Parsed identity: {identity!r}\n"
-                f"Expected format: ['BSXXX', 'RRR', 'CC', 'b']\n"
-                f"Device: BS-1-10 at port {self.port!r}\n"
+                f"Expected format: ['HVXXX', 'RRR', 'CC', 'b']\n"
+                f"Device: BS at port {self.port!r}\n"
             )
 
     def set_voltage(self, channel_num, value):
-        """ Send set voltage command to BS-1-10.
+        """ Send set voltage command to device.
         Args:
             channel_num (int): Channel number.
             value (float): Voltage value to set.
         Raises:
-            LabscriptError: If the response from BS-1-10 is incorrect.
+            LabscriptError: If the response from device is incorrect.
         """
         try:
             channel = f"CH{int(channel_num):02d}"
-            scaled_voltage = self._scale_to_normalized(float(value), float(self.device_voltage_range))
-            send_str = f"{self.device_serial} {channel} {scaled_voltage:.6f}\r"
+            if self.supports_custom_voltages_per_channel:
+                voltage_range = float(self.AO_ranges[channel_num - 1]['voltage_range'][1])
+            else:
+                voltage_range = float(self.default_voltage_range[1])
+            scaled_voltage = self._scale_to_normalized(float(value), float(voltage_range))
+            send_str = f"{self.device_serial} {channel} {scaled_voltage:.5f}\r"
 
             self.connection.write(send_str.encode())
-            response = self.connection.readline().decode().strip() #'CHXX Y.YYYYY'
+            response = self.connection.read_until(b'\r').decode().strip() #'CHXX Y.YYYYY'
+            logger.debug(f"[BS_cryo] Sent to cryo bias supply: {send_str!r} with {value} | Received: {response!r}")
 
-            logger.debug(f"Sent to BS-1-10: {send_str.strip()} | Received: {response!r}")
-
-            expected_response = f"{channel} {scaled_voltage:.6f}"
+            expected_response = f"{channel} {scaled_voltage:.5f}"
             if response != expected_response:
                 raise LabscriptError(
                     f"Voltage setting failed.\n"
                     f"Sent command: {send_str.strip()!r}\n"
                     f"Expected response: {expected_response!r}\n"
                     f"Actual response: {response!r}\n"
-                    f"Device: BS-1-10 at port {self.port!r}"
+                    f"Device at port {self.port!r}"
                 )
         except Exception as e:
             raise LabscriptError(f"Error in set_voltage: {e}")
@@ -89,12 +97,13 @@ class BiasSupply:
         send_str = f"{self.device_serial} TEMP\r"
         self.connection.write(send_str.encode())
 
-        response = self.connection.readline().decode().strip() #'XX.X°C'
+        response = self.connection.read_until(b'\r').decode().strip() #'TEMP XXX.X°C'
 
         if response.endswith("°C"):
             try:
                 # Remove the degree symbol and parse the number
-                temperature_str = response.replace("°C", "").strip()
+                _, temperature_str_raw = response.split() # 'TEMP' 'XXX.X°C'
+                temperature_str = temperature_str_raw.replace("°C", "").strip()
                 temperature = float(temperature_str)
                 return temperature
             except ValueError:
