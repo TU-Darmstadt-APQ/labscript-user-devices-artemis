@@ -24,6 +24,9 @@ class UMWorker(Worker):
         self._stop_event = threading.Event()
         self._finished_event = threading.Event()
 
+        self.front_panel_values = {} # todo: check later
+        self.final_values = {}
+
         try:
             # Try to establish a serial connection
             self.connection = serial.Serial(self.port, self.baud_rate, timeout=1)
@@ -46,9 +49,24 @@ class UMWorker(Worker):
         """Allows for user control of the device via the BLACS_tab, 
         setting outputs to the values set in the BLACS_tab widgets. 
         Runs at the end of the shot."""
-        
-        print(f"front panel values: {front_panel_values}")
-        # todo: add new send button + add logic
+        self.front_panel_values = front_panel_values
+
+        if not getattr(self, 'restored_from_final_values', False):
+            print("Front panel values (before shot):")
+            for ch_name, voltage in front_panel_values.items():
+                print(f"  {ch_name}: {voltage:.2f} V")
+
+            # Restore final values from previous shot, if available
+            if self.final_values:
+                for ch_num, value in self.final_values.items():
+                    front_panel_values[ch_num] = value
+
+            print("\nFront panel values (after shot):")
+            for ch_num, voltage in self.final_values.items():
+                print(f"  {ch_num}: {voltage:.2f} V")
+
+            self.final_values = {}  # Empty after restoring
+            self.restored_from_final_values = True
 
         return front_panel_values
 
@@ -91,7 +109,11 @@ class UMWorker(Worker):
         to the shot h5 file as results. 
         Runs at the end of the shot."""
         rich_print(f"---------- Begin transition to Manual: ----------", color=BLUE)
-        rich_print(f"---------- End transition to Manual: ----------", color=BLUE)
+        self.thread.join()
+        if not self._finished_event.is_set():
+            print("WARNING: experiment sequence did not finish properly.")
+        else:
+            print("Experiment sequence completed successfully.")
         return True
     
     def send_to_UM(self, cmd_str):
@@ -216,6 +238,14 @@ class UMWorker(Worker):
             return f"{normalized_value:.7f}"
         else:
             return f"{normalized_value:.4f}"
+
+    def reprogram_UM(self, kwargs):
+        print("Reprogram device from GUI")
+        logger.info(f"[UM] Setting from (manual mode)")
+        for channel, voltage in self.front_panel_values.items():
+            self.set_voltage(channel, voltage)
+            print(f"→ {channel}: {voltage:.2f} V")
+
 
 
 # --------------------contants

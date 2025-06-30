@@ -2,7 +2,7 @@ from blacs.tab_base_classes import Worker, define_state
 from blacs.device_base_class import DeviceTab
 from qtutils import UiLoader
 from user_devices.logger_config import logger
-from qtutils.qt.QtWidgets import QRadioButton, QSizePolicy, QVBoxLayout, QButtonGroup, QHBoxLayout, QSpacerItem, QLabel
+from qtutils.qt.QtWidgets import QRadioButton, QSizePolicy, QVBoxLayout, QButtonGroup, QHBoxLayout, QSpacerItem, QLabel, QPushButton, QSizePolicy as QSP
 from qtutils.qt.QtCore import Qt
 from blacs.tab_base_classes import MODE_MANUAL
 
@@ -66,6 +66,7 @@ class UMTab(DeviceTab):
 
         # Create radio button for modes
         self.create_mode_button(self.mode_changed)
+        self.create_send_button(self.send_to_device)
         # Set the capabilities of this device
         self.supports_remote_value_check(False)
         self.supports_smart_programming(False) # see at 3.3.19, 5.3 (docs) 
@@ -119,16 +120,36 @@ class UMTab(DeviceTab):
         # Add the centered layout to the main device tab layout
         self.get_tab_layout().addLayout(hbox)
 
-        # # Add centered layout to center the button
-        # center_layout = QHBoxLayout()
-        # center_layout.addStretch()
-        # center_layout.addWidget(self.fast_button)
-        # center_layout.addWidget(self.ultra_button)
-        # center_layout.addWidget(self.label)
-        # center_layout.addStretch()
-        #
-        # # Add center layout on device layout
-        # self.get_tab_layout().addLayout(center_layout)
+    def create_send_button(self, on_click_callback):
+        """Creates a styled QPushButton with consistent appearance and connects it to the given callback."""
+        text = 'Send to Device'
+        button = QPushButton(text)
+        button.setSizePolicy(QSP.Fixed, QSP.Fixed)
+        button.adjustSize()
+        button.setStyleSheet("""
+                   QPushButton {
+                       border: 1px solid #B8B8B8;
+                       border-radius: 3px;
+                       background-color: #F0F0F0;
+                       padding: 4px 10px;
+                       font-weight: light;
+                   }
+                   QPushButton:hover {
+                       background-color: #E0E0E0;
+                   }
+                   QPushButton:pressed {
+                       background-color: #D0D0D0;
+                   }
+               """)
+        button.clicked.connect(lambda: on_click_callback())
+        logger.debug(f"[CAEN] Button {text} is created")
+
+        # Add centered layout to center the button
+        center_layout = QHBoxLayout()
+        center_layout.addStretch()
+        center_layout.addWidget(button)
+        center_layout.addStretch()
+        self.get_tab_layout().addLayout(center_layout)
 
     @define_state(MODE_MANUAL, True)
     def mode_changed(self, button):
@@ -138,3 +159,10 @@ class UMTab(DeviceTab):
             self.label.setText(f"Selected mode: {selected_mode}")
         except Exception as e:
             logger.debug(f"[UM] Error by send work to worker(change_mode): \t {e}")
+
+    @define_state(MODE_MANUAL, True)
+    def send_to_device(self):
+        try:
+            yield (self.queue_work(self.primary_worker, 'reprogram_UM', []))
+        except Exception as e:
+            logger.debug(f"[UM] Error by send work to worker(reprogram_UM): \t {e}")
