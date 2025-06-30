@@ -38,7 +38,7 @@ def test_serial():
                 response = "#CMD:OK\r\n"
                 os.write(master, response.encode())
             else:
-                response = "err\r"
+                response = "err\r\n"
                 os.write(master, response.encode())
          
 if __name__ == "__main__":

@@ -2,7 +2,6 @@ from blacs.tab_base_classes import Worker, define_state
 from blacs.device_base_class import DeviceTab
 from qtutils import UiLoader
 from user_devices.logger_config import logger
-# from PyQt5.QtWidgets import QApplication, QWidget, QRadioButton, QVBoxLayout, QButtonGroup, QLabel
 from qtutils.qt.QtWidgets import QRadioButton, QSizePolicy, QVBoxLayout, QButtonGroup, QHBoxLayout, QSpacerItem, QLabel
 from qtutils.qt.QtCore import Qt
 from blacs.tab_base_classes import MODE_MANUAL
@@ -55,14 +54,15 @@ class UMTab(DeviceTab):
                 }
         
         # Create the output objects
-        # It will have automatically looked up relevant entries in the BLACS connection table to get their name and unit conversion. 
-        # TODO: how it is connected to connection table, wat should be defined there?
+        # It will have automatically looked up relevant entries in the BLACS connection table to get their name and unit conversion.
         self.create_analog_outputs(ultra_precision_channels)
         self.create_analog_outputs(add_on_channels)
         
         # Create widgets for output objects
-        _, ao_widgets, _ = self.auto_create_widgets()
-        self.auto_place_widgets(("output channels", ao_widgets)) # todo: how to separate ultra high precision and add on
+        ultra_widgets = self.create_analog_widgets(ultra_precision_channels)
+        add_on_widgets = self.create_analog_widgets(add_on_channels)
+        self.auto_place_widgets(("ultra high precision channels", ultra_widgets))
+        self.auto_place_widgets(("add on channels", add_on_widgets))
 
         # Create radio button for modes
         self.create_mode_button(self.mode_changed)

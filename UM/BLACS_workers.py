@@ -36,7 +36,8 @@ class UMWorker(Worker):
             
         except Exception as e:
             raise RuntimeError(f"An error occurred during worker initialization: {e}")
-    
+
+
     def shutdown(self):
         # Should be done when Blacs is closed
         self.connection.close()
@@ -47,6 +48,7 @@ class UMWorker(Worker):
         Runs at the end of the shot."""
         
         print(f"front panel values: {front_panel_values}")
+        # todo: add new send button + add logic
 
         return front_panel_values
 
@@ -63,7 +65,6 @@ class UMWorker(Worker):
         self.restored_from_final_values = False  # Drop flag
         self.final_values = {}  # Store the final values to update GUI during transition_to_manual
         self.h5file = h5_file  # Store path to h5 to write back from front panel
-        self.device_name = device_name
 
         with h5py.File(h5_file, 'r') as hdf5_file:
             group = hdf5_file['devices'][device_name]
@@ -90,16 +91,16 @@ class UMWorker(Worker):
         to the shot h5 file as results. 
         Runs at the end of the shot."""
         rich_print(f"---------- Begin transition to Manual: ----------", color=BLUE)
-
+        rich_print(f"---------- End transition to Manual: ----------", color=BLUE)
         return True
     
     def send_to_UM(self, cmd_str):
-        logger.debug(f"[UM] Sending to UM: {cmd_str}")
+        # logger.debug(f"[UM] Sending to UM: {cmd_str}")
         self.connection.write((cmd_str + '\r').encode())
         
     def receive_from_UM(self):
-        response = self.connection.readline().decode('utf-8').strip() 
-        logger.debug(f"[UM] Received from UM: {response}")
+        response = self.connection.read_until(b'\r').decode('utf-8').strip()
+        # logger.debug(f"[UM] Received from UM: {response}")
         return response
 
     def set_voltage(self, channel, voltage):
@@ -107,8 +108,8 @@ class UMWorker(Worker):
             channel = self._map_channel_to_number("ADD_ON", channel)  # '01'
         else:
             channel = self._map_channel_to_number(self.mode, channel) # '02'
-        voltage = self._format_voltage_value(self.mode, voltage)
-        cmd = f"{self.device_name} CH{channel} {voltage}"
+        voltage = self._format_voltage_value(int(channel), voltage)
+        cmd = f"{self.device_serial_number} CH{channel} {voltage}"
         self.send_to_UM(cmd)
         response = self.receive_from_UM()
         logger.debug(f"[UM] Sent: {cmd} \t Received: {response}")
@@ -125,6 +126,7 @@ class UMWorker(Worker):
                 if wait_time > 0:
                     time.sleep(wait_time)
                 print(f"[Time: {datetime.now()}] \n")
+                logger.info(f"Sending to device at time [{t}]")
                 for conn_name, voltage in voltages.items():
                     self.set_voltage(conn_name, voltage)
                     self.final_values[conn_name] = voltage
@@ -152,6 +154,7 @@ class UMWorker(Worker):
         return (actual_value - min_val) / (max_val - min_val)
 
     def change_mode(self, selected_mode):
+        # todo: send command to device
         if isinstance(selected_mode, list):
             selected_mode = selected_mode[0]
             print(f"MODE CHANGED: [{selected_mode}]")
@@ -207,14 +210,12 @@ class UMWorker(Worker):
             raise ValueError(
                 f"Invalid channel '{channel_name}' for mode '{mode}'. Valid channels: {list(channel_mapping[mode])}")
 
-    def _format_voltage_value(self, mode: str, value: float) -> str:
-        match mode:
-            case "ULTRA":
-                return f"{value:.7f}"
-            case "FAST":
-                return f"{value:.4f}"
-            case _:
-                raise ValueError(f"Unknown mode: {mode}")
+    def _format_voltage_value(self, channel: int, value: float) -> str:
+        normalized_value = (value - self.MIN_VAL) / (self.MAX_VAL - self.MIN_VAL)
+        if 16 <= channel <= 21:
+            return f"{normalized_value:.7f}"
+        else:
+            return f"{normalized_value:.4f}"
 
 
 # --------------------contants

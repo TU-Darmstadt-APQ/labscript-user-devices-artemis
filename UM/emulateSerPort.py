@@ -34,7 +34,7 @@ def test_serial():
         command = read_command(master).decode().strip()
         if command:
             print("command {}".format(command))
-            if command == "IDN":
+            if command.startswith("IDN"):
                 response = device_identity.encode() 
                 os.write(master, response)
             elif command.startswith("UM01 CH"):

@@ -11,9 +11,7 @@ class UM(IntermediateDevice):
     def __init__(self, name, port='', baud_rate=9600, parent_device=None, **kwargs):
         IntermediateDevice.__init__(self, name, parent_device, **kwargs)
         self.BLACS_connection = '%s,%s' % (port, str(baud_rate))
-    
-    def add_device(self, device):
-        Device.add_device(self, device)
+
 
     def generate_code(self, hdf5_file):
         """Convert the list of commands into numpy arrays and save them to the shot file."""

@@ -1,7 +1,3 @@
-'''
-    This is a simple file that shows you the minimal elements you need
-    to write your own experimental sequence.
-'''
 import numpy as np
 from labscript import (
     AnalogIn,
@@ -31,17 +27,17 @@ from user_devices.BS_cryo.models.BS_1_8 import BS_1_8
 from user_devices.HV_stahl.models.HV_200_8 import HV_200_8
 from user_devices.HV_stahl.models.HV_250_8 import HV_250_8
 from user_devices.HV_stahl.models.HV_500_8 import HV_500_8
-# from labscript_devices.BS_Series.models.BS_341A_spec import BS_341A_spec
-# from labscript_devices.BS_Series.models.BS_341A import BS_341A
+from labscript_devices.BS_Series.models.BS_341A_spec import BS_341A_spec
+from labscript_devices.BS_Series.models.BS_341A import BS_341A
 
 
-def init_UM():
-    UM(name='UM', parent_device=clockline, port='/dev/pts/6', baud_rate=9600)
-    AnalogOut(name="CRES 1", parent_device=UM, connection='CH 1')
-    AnalogOut(name="CRES 2", parent_device=UM, connection='CH 2')
-    AnalogOut(name="CRES 3", parent_device=UM, connection='CH 3')
-    AnalogOut(name="CRES 4", parent_device=UM, connection='CH 4')
-    AnalogOut(name="CRES 5", parent_device=UM, connection='CH 5')
+def init_UM(clockline):
+    UM(name='UM_ST', parent_device=clockline, port='/dev/ttyUSB0', baud_rate=9600)
+    AnalogOut(name="CRES_1", parent_device=UM_ST, connection='CH 1')
+    AnalogOut(name="CRES_2", parent_device=UM_ST, connection='CH 2')
+    AnalogOut(name="CRES_3", parent_device=UM_ST, connection='CH 3')
+    AnalogOut(name="CRES_4", parent_device=UM_ST, connection='CH 4')
+    AnalogOut(name="CRES_5", parent_device=UM_ST, connection='CH 5')
 
 def init_BNC_575():
     BNC_575(name='pulse_generator', port='/dev/pts/2', baud_rate=115200)
@@ -65,15 +61,15 @@ def init_BS_8(clockline):
     AnalogOut(name='BS_18_analog_output_3', parent_device=bias_supply_8, connection='CH 3')
     AnalogOut(name='BS_18_analog_output_4', parent_device=bias_supply_8, connection='CH 2', default_value=5.55)
 
-# def init_BS_341A_spec():
-#     BS_341A_spec(name='precision_voltage_source_for_ST', parent_device=clockline, port='/dev/pts/3', baud_rate=9600)
-#     AnalogOut(name='ao0_bs', parent_device=precision_voltage_source_for_ST, connection='CH 1', default_value=1.23)
-#     AnalogOut(name='ao1_bs', parent_device=precision_voltage_source_for_ST, connection='CH 2')
-#
-# def init_BS_341A():
-#     BS_341A_spec(name='source_for_ST', parent_device=clockline, port='/dev/pts/3', baud_rate=9600)
-#     AnalogOut(name='ao0_bs_norm', parent_device=source_for_ST, connection='CH 1', default_value=1.23)
-#     AnalogOut(name='ao1_bs_norm', parent_device=source_for_ST, connection='CH 2')
+def init_BS_341A_spec():
+    BS_341A_spec(name='precision_voltage_source_for_ST', parent_device=clockline, port='/dev/pts/3', baud_rate=9600)
+    AnalogOut(name='ao0_bs', parent_device=precision_voltage_source_for_ST, connection='CH 1', default_value=1.23)
+    AnalogOut(name='ao1_bs', parent_device=precision_voltage_source_for_ST, connection='CH 2')
+
+def init_BS_341A(clockline):
+    BS_341A_spec(name='source_for_ST', parent_device=clockline, port='/dev/pts/3', baud_rate=9600)
+    AnalogOut(name='ao0_bs_norm', parent_device=source_for_ST, connection='CH01', default_value=1.23)
+    AnalogOut(name='ao1_bs_norm', parent_device=source_for_ST, connection='CH02')
 
 def init_CAEN():
     CAEN(
