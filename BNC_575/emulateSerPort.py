@@ -36,7 +36,7 @@ def test_serial():
             if command.startswith("*IDN?"):
                 response = "OK_IDN_came\r\n"
                 os.write(master, response.encode())
-            elif command.startswith(":PULS") or command.startswith(":SYSTem") or command.startswith("*"):
+            elif command.startswith(":PULS") or command.startswith(":SYST") or command.startswith("*"):
                 response = 'ok\r\n'
                 os.write(master, response.encode())
             else:

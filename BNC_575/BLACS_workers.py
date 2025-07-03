@@ -1,4 +1,4 @@
-import labscript_utils.h5_lock # FIXME: WHY????
+import labscript_utils.h5_lock
 import h5py
 import numpy as np
 from blacs.tab_base_classes import Worker
@@ -13,9 +13,10 @@ class BNC_575Worker(Worker):
 
         try:
             from .pulse_generator import PulseGenerator
-            self.generator = PulseGenerator(self.port, self.baud_rate, verbose=False)
+            self.generator = PulseGenerator(self.port, self.baud_rate, verbose=True)
         except Exception as e:
             raise LabscriptError(f"Serial connection failed: {e}")
+
            
     def shutdown(self):
         self.connection.close()
@@ -39,13 +40,13 @@ class BNC_575Worker(Worker):
         mode = system_data['mode'].upper().decode('utf-8')
         if mode == 'BURST' and system_data['burst_count'] != -1:
             self.generator.set_burst_counter(0, system_data['burst_count'])
-            logger.info(f"T0 timer mode is BURST with burst_count = {system_data['burst_count']}")
+            logger.info(f"[BNC]T0 timer mode is BURST with burst_count = {system_data['burst_count']}")
         elif mode == 'DCYCLE' and system_data['on_count'] != -1 and system_data['off_count'] != -1:
             self.generator.set_on_counter(0, system_data['on_count'])
             self.generator.set_off_counter(0, system_data['off_count'])
-            logger.info(f"T0 timer mode is DCYCLE with (on_count, off_count) = ({system_data['on_count']}, {system_data['off_count']})")
+            logger.info(f"[BNC]T0 timer mode is DCYCLE with (on_count, off_count) = ({system_data['on_count']}, {system_data['off_count']})")
         elif mode in ('NORMAL', 'SINGLE'):
-            logger.info(f"T0 timer mode is {mode}")
+            logger.info(f"[BNC]T0 timer mode is {mode}")
         else:
             raise ValueError(f"Invalid T0 timer mode: {mode}. Select from: [NORMAL / SINGLE / BURST / DCYCLE]")
 
@@ -64,13 +65,13 @@ class BNC_575Worker(Worker):
             output_mode = channel['mode'].upper().decode('utf-8')
             if output_mode == 'BURST' and channel['burst_count'] != -1:
                 self.generator.set_burst_counter(ch, channel['burst_count'])
-                logger.info(f"Channel {ch} timer mode is BURST with burst_count = {channel['burst_count']}")
+                logger.info(f"[BNC]Channel {ch} timer mode is BURST with burst_count = {channel['burst_count']}")
             elif output_mode == 'DCYCLE' and channel['on_count'] != -1 and channel['off_count'] != -1:
                 self.generator.set_on_counter(0, channel['on_count'])
                 self.generator.set_off_counter(0, channel['off_count'])
-                logger.info(f"Channel {ch} timer mode is DCYCLE with (on_count, off_count) = ({channel['on_count']}, {channel['off_count']})")
+                logger.info(f"[BNC]Channel {ch} timer mode is DCYCLE with (on_count, off_count) = ({channel['on_count']}, {channel['off_count']})")
             elif output_mode in ('NORMAL', 'SINGLE'):
-                logger.info(f"Channel {ch} timer mode is {mode}")
+                logger.info(f"[BNC]Channel {ch} timer mode is {mode}")
             else:
                 raise ValueError(f"Invalid T0 timer mode: {mode}. Select from: [NORMAL / SINGLE / BURST / DCYCLE]")
 
@@ -99,12 +100,13 @@ class BNC_575Worker(Worker):
 
     def abort_transition_to_buffered(self):
         try:
-            print(f"Aborting transition to buffered.")
             return self.transition_to_manual()
         except Exception as e:
             print(f"Failed to abort properly: {e}")
             return
 
+    def trigger(self, kwargs):
+        self.generator.generate_trigger()
 
     
         

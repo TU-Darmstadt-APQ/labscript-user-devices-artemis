@@ -23,6 +23,7 @@ class PulseChannel(DigitalOut):
             output_mode='TTL',
             amplitude=None,
             sync_source='T0',
+            wait_counter=0,
             **kwargs
     ):
         """
@@ -40,6 +41,7 @@ class PulseChannel(DigitalOut):
         :param output_mode: TTL/ ADJustable/
         :param amplitude: 2.0V to 20V
         :param sync_source: TO, CHA, CHB, CHC, CHD, etc
+        :param wait_counter: 0-9999999
         :param kwargs:
         """
         DigitalOut.__init__(self, name, parent_device, connection, **kwargs)
@@ -54,6 +56,7 @@ class PulseChannel(DigitalOut):
             'sync_source': sync_source,
             'output_mode': output_mode,
             'amplitude': amplitude,
+            'wait_counter': wait_counter
         }
 
 class BNC_575(TriggerableDevice):
@@ -123,6 +126,7 @@ class BNC_575(TriggerableDevice):
 
     def trigger(self, t):
         pass
+        #todo: produce software trigger
 
     def generate_code(self, hdf5_file):
         #TriggerableDevice.generate_code(self, hdf5_file)
@@ -176,6 +180,7 @@ class BNC_575(TriggerableDevice):
             ('sync_source', np.dtype('S20')),
             ('output_mode', np.dtype('S20')),
             ('amplitude', np.int32),
+            ('wait_counter', np.int32)
         ]
 
         channels_configuration = np.empty(self.output_num, channels_dtypes)

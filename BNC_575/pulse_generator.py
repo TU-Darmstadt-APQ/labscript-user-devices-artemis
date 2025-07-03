@@ -12,17 +12,17 @@ class PulseGenerator:
                  baud_rate,
                  verbose=False
                  ):
-        logger.info(f"<initialising Pulse Generator>")
+        logger.info(f"[BNC] <initialising Pulse Generator>")
         self.verbose = verbose
         self.port = port
         self.baud_rate = baud_rate
 
         # connecting to connectionice
-        self.connection = serial.Serial(self.port, self.baud_rate, timeout=0.08) # what is the exact response time
-        logger.info(f"Pulse Generator Serial connection opened on {self.port} at {self.baud_rate} bps")
+        self.connection = serial.Serial(self.port, self.baud_rate, timeout=1) # what is the exact response time
+        logger.info(f"[BNC] Pulse Generator Serial connection opened on {self.port} at {self.baud_rate} bps")
         identity = self.identify_device()
         print(f"Connected to {identity}")
-        logger.debug(f"Received from BNC Serial: {identity}")
+        logger.debug(f"[BNC] Received from BNC Serial: {identity}")
 
         # initialize connection
         self.reset_device()
@@ -37,21 +37,29 @@ class PulseGenerator:
 
     def reset_device(self): # Resets to default state
         self.send_command('*RST')
+        if self.verbose:
+            print("Reset to default.")
 
     def set_baud_rate(self, baud_rate):
         self.send_command(f':SYST:SER:BAUD {baud_rate}')
 
     def generate_trigger(self):
         self.send_command('*TRG')
+        if self.verbose:
+            print("Generate software trigger.")
 
     ### Basic intern system commands
 
     def enable_output_for_all(self):
         """Enable output on all channels."""
         self.send_command(':PULSE0:STATE ON')
+        if self.verbose:
+            print("Enable output for all channels.")
 
     def disable_output_for_all(self):
         self.send_command(':PULSE0:STATE OFF')
+        if self.verbose:
+            print("Disable output for all channels.")
 
     def set_t0_mode(self, mode):
         """ Set the mode of the pulse generator.
@@ -62,6 +70,8 @@ class PulseGenerator:
         if mode not in ['NORMAL', 'SINGLE', 'BURST', 'DCYCLE']:
             raise ValueError(f"Invalid t0 mode={mode}. Choose from 'NORMal', 'SINGLe', 'BURSt', 'DCYCLe'.")
         self.send_command(f':PULSE0:MODE {mode}')
+        if self.verbose:
+            print(f"Set system mode to {mode}.")
 
     def set_t0_period(self, period):
         """ Set the period of the pulse generator.
@@ -69,9 +79,13 @@ class PulseGenerator:
             period (float): The period in seconds. Range: 100ns-5000s
         """
         self.send_command(f':PULSE0:PER {period}')
+        if self.verbose:
+            print(f"Set system period to {period}")
 
     def set_trigger_mode(self, mode):
         self.send_command(f":PULSE0:TRIG:MOD {self._normalize(mode)}")
+        if self.verbose:
+            print(f"Set trigger mode to {mode}")
 
     def set_trigger_logic(self, trigger_logic):
         self.send_command(f":PULSE0:TRIG:LOG {trigger_logic}")
@@ -110,6 +124,8 @@ class PulseGenerator:
             delay (float): The delay in seconds.
         """
         self.send_command(f':PULSE{channel}:DELAY {delay}')
+        if self.verbose:
+            print(f"Set delay on channel {channel} to {delay}")
 
     def set_width(self, channel, width):
         """ Set the width to the specified channel.
@@ -118,6 +134,8 @@ class PulseGenerator:
             width (float): The width in seconds.
         """
         self.send_command(f':PULSE{channel}:WIDTH {width}')
+        if self.verbose:
+            print(f"Set width on channel {channel} to {width}")
 
     def select_sync_source(self, channel, sync_source):
         self.send_command(f':PULSE{channel}:SYNC {self._normalize(sync_source)}')
@@ -132,6 +150,12 @@ class PulseGenerator:
         if mode not in ['NORMAL', 'SINGLE', 'BURST', 'DCYCLE']:
             raise ValueError(f"Invalid mode={mode}. Choose from 'NORMAL', 'SINGLE', 'BURST', 'DCYCLE'.")
         self.send_command(f':PULSE{channel}:CMODe {mode}')
+        if self.verbose:
+            print(f"Set mode on channel {channel} to {mode}")
+
+    def set_wait_counter(self, channel, wait_counter):
+        """Sets the number of T0 pulses to delay until enabling output."""
+        self.send_command(f':PULSE{channel}:WCOunter {wait_counter}')
 
     def set_output_mode(self, channel, output_mode):
         if isinstance(output_mode, bytes):
@@ -154,14 +178,14 @@ class PulseGenerator:
 
     ### helpers
     def send_command(self, cmd: str):
-        logger.debug(f"Sending to BNC Serial: {cmd}")
         self.connection.write((cmd + '\r\n').encode())
-        return self.receive_from_BNC()
+        response = self.receive_from_BNC()
+        logger.debug(f"[BNC] Sent: {cmd} \t Received: {response}")
 
     def receive_from_BNC(self):
         try:
             response = self.connection.readline().decode().strip()
-            logger.debug(f"Received from BNC Serial: {response}")
+            # logger.debug(f"[BNC] Received from BNC Serial: {response}")
             if not response or response.lower() != 'ok':
                 raise LabscriptError(f'Device responded with error:  {response}')
             return True
