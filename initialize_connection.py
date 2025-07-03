@@ -21,7 +21,7 @@ from labscript_devices.DummyPseudoclock.labscript_devices import DummyPseudocloc
 from labscript_devices.DummyIntermediateDevice import DummyIntermediateDevice
 from user_devices.UM.labscript_devices import UM
 from user_devices.CAEN_R8034.labscript_devices import CAEN
-from user_devices.BNC_575.labscript_devices import BNC_575
+from user_devices.BNC_575.labscript_devices import BNC_575, PulseChannel
 from user_devices.BS_cryo.models.BS_1_10 import BS_1_10
 from user_devices.BS_cryo.models.BS_1_8 import BS_1_8
 from user_devices.HV_stahl.models.HV_200_8 import HV_200_8
@@ -32,19 +32,20 @@ from labscript_devices.BS_Series.models.BS_341A import BS_341A
 
 
 def init_UM(clockline):
+    # '/dev/ttyUSB0'
     UM(name='UM_ST', parent_device=clockline, port='/dev/ttyUSB0', baud_rate=9600)
-    AnalogOut(name="CRES_1", parent_device=UM_ST, connection='CH 1')
-    AnalogOut(name="CRES_2", parent_device=UM_ST, connection='CH 2')
-    AnalogOut(name="CRES_3", parent_device=UM_ST, connection='CH 3')
-    AnalogOut(name="CRES_4", parent_device=UM_ST, connection='CH 4')
-    AnalogOut(name="CRES_5", parent_device=UM_ST, connection='CH 5')
+    AnalogOut(name="CRES_1", parent_device=UM_ST, connection='CH A')
+    AnalogOut(name="CRES_2", parent_device=UM_ST, connection='CH B')
+    AnalogOut(name="CRES_3", parent_device=UM_ST, connection='CH C')
+    AnalogOut(name="CRES_4", parent_device=UM_ST, connection='CH 1')
+    AnalogOut(name="CRES_5", parent_device=UM_ST, connection='CH 2')
 
 def init_BNC_575():
-    BNC_575(name='pulse_generator', port='/dev/pts/2', baud_rate=115200)
-    AnalogOut(name='pulse_1', connection='pulse 1', parent_device=pulse_generator)
-    AnalogOut(name='pulse_2', connection='pulse 2', parent_device=pulse_generator)
-    AnalogOut(name='pulse_3', connection='pulse 3', parent_device=pulse_generator)
-    AnalogOut(name='pulse_4', connection='pulse 4', parent_device=pulse_generator)
+    BNC_575(name='pulse_generator', port='/dev/pts/4', trigger_mode='DISabled')
+    PulseChannel(name='pulse_1_for_CAEN', connection='pulse 1', parent_device=pulse_generator, delay=2e-3, width=1, mode='SINGle')
+    PulseChannel(name='pulse_2_for_CC', connection='pulse 2', parent_device=pulse_generator, delay=1+2e-3, width=1, mode='SINGle')
+    PulseChannel(name='pulse_3_for_MCT', connection='pulse 3', parent_device=pulse_generator, delay=2+2e-3, width=1, mode='SINGle')
+    PulseChannel(name='pulse_4', connection='pulse 4', parent_device=pulse_generator, delay=2e-3, width=1)
 
 def init_BS_10(clockline):
     BS_1_10(name='bias_supply_10', parent_device=clockline, port='/dev/pts/1', baud_rate=115200)
@@ -71,16 +72,16 @@ def init_BS_341A(clockline):
     AnalogOut(name='ao0_bs_norm', parent_device=source_for_ST, connection='CH01', default_value=1.23)
     AnalogOut(name='ao1_bs_norm', parent_device=source_for_ST, connection='CH02')
 
-def init_CAEN():
+def init_CAEN(clockline):
     CAEN(
         name='voltage_source_serial',
         parent_device=clockline,
-        port='/dev/pts/4',
+        port='/dev/pts/6',
         baud_rate=9600
     )
-    AnalogOut(name='AO_1', parent_device=voltage_source_serial, connection='CH0', default_value=0)
-    AnalogOut(name='AO_2', parent_device=voltage_source_serial, connection='CH1', default_value=0)
-    AnalogOut(name='AO_3', parent_device=voltage_source_serial, connection='CH3', default_value=0)
+    AnalogOut(name='caen_ch_0', parent_device=voltage_source_serial, connection='CH 0', default_value=0)
+    AnalogOut(name='caen_ch_1', parent_device=voltage_source_serial, connection='CH 1', default_value=0)
+    AnalogOut(name='caen_ch_3', parent_device=voltage_source_serial, connection='CH 3', default_value=0)
 
 def init_HV_200_8(clockline):
     HV_200_8(name="power_supply_for_ST", parent_device=clockline, port='/dev/pts/4')
