@@ -16,7 +16,7 @@ class CAENTab(DeviceTab):
         
         analog_properties = {}
         for i in range(self.num_AO):
-            analog_properties['CH%d' % i] = { #todo: change channel names
+            analog_properties['CH %d' % i] = {
                 'base_unit': self.base_unit,
                 'min': self.base_min,
                 'max': self.base_max,

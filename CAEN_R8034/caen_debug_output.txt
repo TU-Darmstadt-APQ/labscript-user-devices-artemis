@@ -1,4 +1,0 @@
-[CAEN generate_code] TIMES:
-[0.    0.001]
-[CAEN generate_code] ANALOG_OUTPUTS:
-[(3333., 0.134, 0., 5555.55) (3333., 0.134, 0., 5555.55)]

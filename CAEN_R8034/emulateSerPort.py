@@ -33,7 +33,7 @@ def test_serial():
         command = read_command(master).decode()
         if command:
             print(f"command {command}")
-            logger.debug(f"[CAEN] command from remote: {command} ")
+            # logger.debug(f"[CAEN] command from remote: {command} ")
             if command.startswith("$CMD:SET"):
                 response = "#CMD:OK\r\n"
                 os.write(master, response.encode())

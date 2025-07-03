@@ -79,11 +79,11 @@ class CAENWorker(Worker):
             if self.using_usb:
                 response = self.ep_in.read(64, timeout=3)
                 decoded = response.decode(errors='ignore').strip()
-                logger.debug(f"[CAEN] Received from USB: {decoded}")
+                # logger.debug(f"[CAEN] Received from USB: {decoded}")
                 return decoded
             else:
                 response = self.connection.readline().decode().strip()
-                logger.debug(f"[CAEN] Received from Serial: {response}")
+                # logger.debug(f"[CAEN] Received from Serial: {response}")
                 self._check_serial_errors(response)
                 return response
         except Exception as e:
@@ -106,7 +106,8 @@ class CAENWorker(Worker):
     def set_voltage(self, channel, voltage):
         cmd = f"$CMD:SET,CH:{channel},PAR:VSET,VAL:{voltage}"
         self.send_to_CAEN(cmd)
-        self.receive_from_CAEN()
+        response = self.receive_from_CAEN()
+        logger.info(f"[CAEN] Sent: {cmd} \t Received: {response}")
         
     def shutdown(self):
         self.connection.close()
@@ -131,7 +132,7 @@ class CAENWorker(Worker):
             # Restore final values from previous shot, if available
             if self.final_values:
                 for ch_num, value in self.final_values.items():
-                    front_panel_values[f'CH{int(ch_num)}'] = value
+                    front_panel_values[f'CH {int(ch_num)}'] = value
 
             print("\nFront panel values (after shot):")
             for ch_num, voltage in self.final_values.items():
@@ -205,8 +206,10 @@ class CAENWorker(Worker):
         elif ch_lower.startswith("channel"):
             _, channel_num_str = channel.split()  # 'channel 1' -> 1
             channel_num = int(channel_num_str)
+        elif ch_lower.startswith("ch "):
+            channel_num = int(ch_lower[3:].strip())  # 'ch 0', 'ch 3', 'ch 7' -> 0, 3, 7
         elif ch_lower.startswith("ch"):
-            channel_num = int(ch_lower[2:])  # 'ch0', 'ch03', 'ch7' -> 0, 3, 7
+            channel_num = int(ch_lower[2:].strip())  # 'ch0', 'ch03', 'ch7' -> 0, 3, 7
         else:
             raise ValueError(f"Unexpected channel name format: '{channel}'")
 
