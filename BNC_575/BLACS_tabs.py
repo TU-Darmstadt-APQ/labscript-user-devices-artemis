@@ -1,38 +1,113 @@
 from blacs.tab_base_classes import Worker, define_state
 from blacs.device_base_class import DeviceTab
 from user_devices.logger_config import logger
-from user_devices.BNC_575.pulseoutput import PulseOutput
 from qtutils.qt.QtCore import *
 from qtutils.qt.QtGui import *
 from qtutils.qt.QtWidgets import *
 from qtutils.qt.QtWidgets import QPushButton, QSizePolicy as QSP, QHBoxLayout, QSpacerItem
 from blacs.tab_base_classes import MODE_MANUAL
+from user_devices.BNC_575.ChannelWidget import ChannelWidget
 
 
 class BNC_575Tab(DeviceTab):
     def initialise_GUI(self):
-        do_prop = {}
-        for i in range(1, 9):
-            do_prop['pulse {:01d}'.format(i)] = {}
-        self.create_digital_outputs(do_prop)
-        _, _, do_widgets = self.auto_create_widgets()
-        self.auto_place_widgets(('Digital Outputs/Flags', do_widgets))
-        self.create_trigger_button(self.trigger)
+        layout = QVBoxLayout()
+        self.get_tab_layout().addLayout(layout)
+
+        # System config
+        self.system_box = QGroupBox("System Configuration")
+        sys_layout = QVBoxLayout()
+
+        self.t0_mode = QComboBox();
+        self.t0_mode.addItems(['NORMal', 'SINGle', 'BURSt', 'DCYCle'])
+        self.t0_mode.currentTextChanged.connect(self.update_system_visibility)
+
+        self.period = QDoubleSpinBox();
+        self.period.setSuffix(" s")
+        self.trigger = QCheckBox("Trigger Enabled")
+        self.burst_count = QSpinBox()
+        self.on_count = QSpinBox()
+        self.off_count = QSpinBox()
+
+        sys_layout.addWidget(QLabel("Mode:"));
+        sys_layout.addWidget(self.t0_mode)
+        sys_layout.addWidget(QLabel("Period:"));
+        sys_layout.addWidget(self.period)
+        sys_layout.addWidget(self.trigger)
+        sys_layout.addWidget(QLabel("Burst Count:"));
+        sys_layout.addWidget(self.burst_count)
+        sys_layout.addWidget(QLabel("On Count:"));
+        sys_layout.addWidget(self.on_count)
+        sys_layout.addWidget(QLabel("Off Count:"));
+        sys_layout.addWidget(self.off_count)
+        self.system_box.setLayout(sys_layout)
+        layout.addWidget(self.system_box)
+
+        self.update_system_visibility()
+
+        # Channel config
+        self.channels_box = QGroupBox("Channels")
+        ch_layout = QVBoxLayout()
+        self.channel_widgets = []
+        for i in range(8):
+            ch = ChannelWidget(f"pulse {i}")
+            ch_layout.addWidget(ch)
+            self.channel_widgets.append(ch)
+        self.channels_box.setLayout(ch_layout)
+        layout.addWidget(self.channels_box)
+
+        # Buttons
+        self.btn_configure = QPushButton("Configure")
+        self.btn_trigger = QPushButton("Trigger")
+        self.btn_reset = QPushButton("Reset")
+
+        layout.addWidget(self.btn_configure)
+        layout.addWidget(self.btn_trigger)
+        layout.addWidget(self.btn_reset)
+
+        self.btn_configure.clicked.connect(self.configure_device)
+        self.btn_trigger.clicked.connect(self.trigger_device)
+        self.btn_reset.clicked.connect(self.reset_device)
+
+        self.create_trigger_button(self.trigger_device)
         self.supports_remote_value_check(False)
         self.supports_smart_programming(False)
 
+    def update_system_visibility(self):
+        mode = self.t0_mode.currentText().lower()
+        self.burst_count.setVisible(mode == 'burst')
+        self.on_count.setVisible(mode == 'dcycle')
+        self.off_count.setVisible(mode == 'dcycle')
+
+    def configure_device(self):
+        system_config = {
+            'mode': self.t0_mode.currentText(),
+            'period': self.period.value(),
+            'trigger': self.trigger.isChecked(),
+            'burst_count': self.burst_count.value() if self.burst_count.isVisible() else None,
+            'on_count': self.on_count.value() if self.on_count.isVisible() else None,
+            'off_count': self.off_count.value() if self.off_count.isVisible() else None
+        }
+        channel_configs = [ch.get_config() for ch in self.channel_widgets]
+        self.primary_worker.send_async("program_device", {
+            'system': system_config,
+            'channels': channel_configs
+        })
+
+
+    def reset_device(self):
+        # self.primary_worker.send_async("reset", {})
+        logger.info("Now we wnat to reset devie from GUI ")
+
     def initialise_workers(self):
         connection_table = self.settings['connection_table']
-        properties = connection_table.find_by_name(self.device_name).properties
-        worker_property_keys = [
-            "port", "baud_rate", "pulse_width", "trigger_mode",
-            "t0_mode", "t0_period", "t0_burst_count",
-            "t0_on_count", "t0_off_count", "trigger_logic", "trigger_level"
-        ]
+        device_properties = connection_table.find_by_name(self.device_name).properties # dict
+        channels_properties = self.get_children_properties()
 
         worker_kwargs = {
             "name": self.device_name + '_main',
-            **{k: properties[k] for k in worker_property_keys if k in properties}
+            "device_properties": device_properties,
+            "channels_properties": channels_properties
         }
 
         self.create_worker(
@@ -42,6 +117,17 @@ class BNC_575Tab(DeviceTab):
         )
 
         self.primary_worker = "main_worker"
+
+    def get_children_properties(self):
+        children_properties = []
+        connection_table = self.settings['connection_table']
+        device = connection_table.find_by_name(self.device_name)
+
+        for i in range(len(device.child_list)):
+            child = self.get_child_from_connection_table(self.device_name, 'pulse {:01d}'.format(i + 1))
+            children_properties.append(child.properties)
+            # logger.info(f" child with {children_properties[i]['connection']}: {children_properties[i]}")
+        return children_properties
 
     def create_trigger_button(self, on_click_callback):
         """Creates a styled QPushButton with consistent appearance and connects it to the given callback."""
@@ -75,7 +161,7 @@ class BNC_575Tab(DeviceTab):
         self.get_tab_layout().addLayout(center_layout)
 
     @define_state(MODE_MANUAL, True)
-    def trigger(self):
+    def trigger_device(self):
         try:
             yield (self.queue_work(self.primary_worker, 'trigger', []))
         except Exception as e:
@@ -172,7 +258,7 @@ class BNC_575Tab(DeviceTab):
 #         connection_name = device.name if device else '-'
 #
 #         # Instantiate the DO object
-#         return Select(BLACS_hardware_name, connection_name, self.device_name, self.program_device, self.settings) # TODO: create SELECT object
+#         return SELECT(BLACS_hardware_name, connection_name, self.device_name, self.program_device, self.settings)
 #
 #     def create_pulse_widgets(self, channel_properties):
 #         widgets = {}
@@ -264,3 +350,97 @@ class BNC_575Tab(DeviceTab):
 #     @property
 #     def name(self):
 #         return self._hardware_name + ' - ' + self._connection_name
+#
+#
+# class SELECT(object):
+#     def __init__(self, hardware_name, connection_name, device_name, program_function, settings, options=None):
+#         self._hardware_name = hardware_name
+#         self._connection_name = connection_name
+#         self._device_name = device_name
+#         self._program_device = program_function
+#         self._widget_list = []
+#         self._options = options or ['NORMal', 'SINGle', 'BURSt', 'DCYCle']
+#         self._current_selection = self._options[0]  # Default selection
+#
+#         self._update_from_settings(settings)
+#
+#     def _update_from_settings(self, settings):
+#         if not isinstance(settings, dict):
+#             settings = {}
+#         if 'front_panel_settings' not in settings or not isinstance(settings['front_panel_settings'], dict):
+#             settings['front_panel_settings'] = {}
+#         if self._hardware_name not in settings['front_panel_settings'] or not isinstance(
+#                 settings['front_panel_settings'][self._hardware_name], dict):
+#             settings['front_panel_settings'][self._hardware_name] = {}
+#
+#         if 'base_value' not in settings['front_panel_settings'][self._hardware_name]:
+#             settings['front_panel_settings'][self._hardware_name]['base_value'] = self._options[0]
+#
+#         if 'name' not in settings['front_panel_settings'][self._hardware_name]:
+#             settings['front_panel_settings'][self._hardware_name]['name'] = self._connection_name
+#
+#         self._settings = settings['front_panel_settings'][self._hardware_name]
+#
+#         # self.set_value(self._settings['selected_option'], program=False)
+#         self.set_value(self._settings['base_value'], program=False)
+#         self._update_lock(self._settings['locked'])
+#
+#     def create_widget(self, *args, **kwargs):
+#         widget = ModeBox(self._hardware_name, self._connection_name, self._options, *args, **kwargs)
+#         self.add_widget(widget)
+#         return widget
+#
+#     def add_widget(self, widget):
+#         if widget not in self._widget_list:
+#             widget.setCurrentText(self._current_selection)
+#             widget._combobox.currentTextChanged.connect(self.set_value)
+#             self._widget_list.append(widget)
+#             self._update_lock(self._locked)
+#             return True
+#         return False
+#
+#     def remove_widget(self, widget):
+#         if widget not in self._widget_list:
+#             raise RuntimeError("The widget specified was not part of the SELECT object.")
+#         widget._combobox.currentTextChanged.disconnect(self.set_value)
+#         self._widget_list.remove(widget)
+#
+#     def lock(self):
+#         self._update_lock(True)
+#
+#     def unlock(self):
+#         self._update_lock(False)
+#
+#     def _update_lock(self, locked):
+#         self._locked = locked
+#         for widget in self._widget_list:
+#             widget._combobox.setEnabled(not locked)
+#         self._settings['locked'] = locked
+#
+#     def set_value(self, selection, program=True):
+#         if selection not in self._options:
+#             raise ValueError(f"Invalid selection: {selection}. Must be one of {self._options}")
+#
+#         self._current_selection = selection
+#         # self._settings['selected_option'] = selection
+#         self._settings['base_value'] = selection
+#
+#         if program:
+#             self._program_device()
+#
+#         for widget in self._widget_list:
+#             if widget.currentText() != selection:
+#                 widget._combobox.blockSignals(True)
+#                 widget.setCurrentText(selection)
+#                 widget._combobox.blockSignals(False)
+#
+#
+#     @property
+#     def value(self):
+#         return self._current_selection
+#
+#     @property
+#     def name(self):
+#         return f"{self._hardware_name} - {self._connection_name}"
+#
+#

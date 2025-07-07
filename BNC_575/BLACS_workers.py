@@ -10,79 +10,86 @@ from user_devices.logger_config import logger
 class BNC_575Worker(Worker):
     def init(self):
         """Initializes connection to BNC_575 device (USB pretending to be virtual COM port)"""
-
         try:
             from .pulse_generator import PulseGenerator
             self.generator = PulseGenerator(self.port, self.baud_rate, verbose=True)
         except Exception as e:
             raise LabscriptError(f"Serial connection failed: {e}")
 
-           
-    def shutdown(self):
-        self.connection.close()
-
-    def program_manual(self, front_panel_values):
-        print(f"front panel values: {front_panel_values}")
-
-    def transition_to_buffered(self, device_name, h5_file, initial_values, fresh):
-        print(f"---------- Begin transition to Buffered: ----------")
-
-        self.h5file = h5_file
-        with h5py.File(h5_file, 'r') as hdf5_file:
-            group = hdf5_file['devices'][device_name]
-            system_data = group['system_timer'][0]
-            channels_data = group['channel_timer'][:]
+        worker_property_keys = [
+            "port", "baud_rate", "trigger_mode",
+            "t0_mode", "t0_period", "t0_burst_count",
+            "t0_on_count", "t0_off_count", "trigger_logic", "trigger_level"
+        ]
+        worker_property_channel_keys = ["name", "connection",
+                                        "delay", "width", "mode", "burst_count",
+                                        "on_count", "off_count", "polarity",
+                                        "output_mode", "amplitude", "sync_source", "wait_counter"]
 
         # Configure internal system
-        self.generator.set_t0_period(system_data['period'])
-        self.generator.set_t0_mode(system_data['mode'])
+        self.generator.set_t0_period(getattr(self, 't0_period'))
+        self.generator.set_trigger_mode(getattr(self, 'trigger_mode'))
+        if getattr(self, 'trigger_mode').upper() == 'TRIGGERED':
+            self.generator.set_trigger_logic(getattr(self, 'trigger_logic'))
+            self.generator.set_trigger_level(getattr(self, 'trigger_level'))
 
-        mode = system_data['mode'].upper().decode('utf-8')
-        if mode == 'BURST' and system_data['burst_count'] != -1:
-            self.generator.set_burst_counter(0, system_data['burst_count'])
-            logger.info(f"[BNC]T0 timer mode is BURST with burst_count = {system_data['burst_count']}")
-        elif mode == 'DCYCLE' and system_data['on_count'] != -1 and system_data['off_count'] != -1:
-            self.generator.set_on_counter(0, system_data['on_count'])
-            self.generator.set_off_counter(0, system_data['off_count'])
-            logger.info(f"[BNC]T0 timer mode is DCYCLE with (on_count, off_count) = ({system_data['on_count']}, {system_data['off_count']})")
+        mode = getattr(self, 't0_mode').upper()
+        if mode == 'BURST' and getattr(self, 'burst_count') != -1:
+            self.generator.set_mode(0, mode)
+            self.generator.set_burst_counter(0, getattr(self, 'burst_count'))
+            logger.info(f"[BNC] T0 timer mode is BURST with burst_count = {getattr(self, 'burst_count')}")
+        elif mode == 'DCYCLE' and getattr(self, 'on_count') != -1 and getattr(self, 'off_count') != -1:
+            self.generator.set_mode(0, mode)
+            self.generator.set_on_counter(0, getattr(self, 'on_count'))
+            self.generator.set_off_counter(0, getattr(self, 'off_count'))
+            logger.info(
+                f"[BNC]T0 timer mode is DCYCLE with (on_count, off_count) = ({getattr(self, 'on_count')}, {getattr(self, 'off_count')})")
         elif mode in ('NORMAL', 'SINGLE'):
+            self.generator.set_mode(0, mode)
             logger.info(f"[BNC]T0 timer mode is {mode}")
         else:
             raise ValueError(f"Invalid T0 timer mode: {mode}. Select from: [NORMAL / SINGLE / BURST / DCYCLE]")
 
-        self.generator.set_trigger_mode(system_data['trigger_mode'])
-        if system_data['trigger_mode'].upper() == 'TRIGGERED':
-            self.generator.set_trigger_logic(system_data['trigger_logic'])
-            self.generator.set_trigger_level(system_data['trigger_level'])
+        # configure separate channels
+        for i, channel in enumerate(self.channels_properties):
+            ch = i + 1  # BNC_575 channels are 1-indexed
 
-
-        # Configure separate channels
-        for channel in channels_data:
-            ch = channel['channel']  # channel number starting from 1
             self.generator.enable_output(ch)
             self.generator.set_mode(ch, channel['mode'])
 
-            output_mode = channel['mode'].upper().decode('utf-8')
-            if output_mode == 'BURST' and channel['burst_count'] != -1:
+            output_mode = channel['mode'].upper()
+            if output_mode == 'BURST' and channel['burst_count'] not in (None, -1):
                 self.generator.set_burst_counter(ch, channel['burst_count'])
-                logger.info(f"[BNC]Channel {ch} timer mode is BURST with burst_count = {channel['burst_count']}")
-            elif output_mode == 'DCYCLE' and channel['on_count'] != -1 and channel['off_count'] != -1:
-                self.generator.set_on_counter(0, channel['on_count'])
-                self.generator.set_off_counter(0, channel['off_count'])
-                logger.info(f"[BNC]Channel {ch} timer mode is DCYCLE with (on_count, off_count) = ({channel['on_count']}, {channel['off_count']})")
+                logger.info(f"[BNC] Channel {ch} timer mode is BURST with burst_count = {channel['burst_count']}")
+            elif output_mode == 'DCYCLE' and channel['on_count'] not in (None, -1) and channel['off_count'] not in (None, -1):
+                self.generator.set_on_counter(ch, channel['on_count'])
+                self.generator.set_off_counter(ch, channel['off_count'])
+                logger.info(
+                    f"[BNC] Channel {ch} timer mode is DCYCLE with (on_count, off_count) = ({channel['on_count']}, {channel['off_count']})")
             elif output_mode in ('NORMAL', 'SINGLE'):
-                logger.info(f"[BNC]Channel {ch} timer mode is {mode}")
+                logger.info(f"[BNC] Channel {ch} timer mode is {output_mode}")
             else:
-                raise ValueError(f"Invalid T0 timer mode: {mode}. Select from: [NORMAL / SINGLE / BURST / DCYCLE]")
+                raise ValueError(
+                    f"Invalid timer mode for channel {ch}: {output_mode}. Choose from: [NORMAL / SINGLE / BURST / DCYCLE]")
 
             self.generator.set_delay(ch, channel['delay'])
             self.generator.set_width(ch, channel['width'])
             self.generator.set_output_mode(ch, channel['output_mode'])
+
             if channel['output_mode'].upper() == 'ADJUSTABLE':
                 self.generator.set_output_amplitude(ch, channel['amplitude'])
+
             self.generator.select_sync_source(ch, channel['sync_source'])
             self.generator.set_polarity(ch, channel['polarity'])
 
+    def shutdown(self):
+        self.connection.close()
+
+    def program_manual(self, front_panel_values):
+        print(front_panel_values)
+
+    def transition_to_buffered(self, device_name, h5_file, initial_values, fresh):
+        print(f"---------- Begin transition to Buffered: ----------")
         print(f"---------- END transition to Buffered: ----------")
         return
 

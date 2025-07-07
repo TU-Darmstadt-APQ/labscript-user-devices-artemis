@@ -5,9 +5,24 @@ from labscript import TriggerableDevice, config
 import numpy as np
 from user_devices.logger_config import logger
 
-class PulseChannel(DigitalOut):
+class PulseChannel(Device):
     description = 'Channel of BNC_575'
 
+    @set_passed_properties(
+        property_names={"connection_table_properties": ["name",
+                                                        "connection",
+                                                        "delay",
+                                                        "width",
+                                                        "mode",
+                                                        "burst_count",
+                                                        "on_count",
+                                                        "off_count",
+                                                        "polarity",
+                                                        "output_mode",
+                                                        "amplitude",
+                                                        "sync_source",
+                                                        "wait_counter"]}
+    )
     def __init__(
             self,
             name,
@@ -44,7 +59,7 @@ class PulseChannel(DigitalOut):
         :param wait_counter: 0-9999999
         :param kwargs:
         """
-        DigitalOut.__init__(self, name, parent_device, connection, **kwargs)
+        Device.__init__(self, name, parent_device, connection, **kwargs)
         self.properties = {
             'mode': mode,
             'delay': delay,
@@ -58,6 +73,7 @@ class PulseChannel(DigitalOut):
             'amplitude': amplitude,
             'wait_counter': wait_counter
         }
+
 
 class BNC_575(TriggerableDevice):
     description = 'BNC575-Pulse-Generator'
@@ -126,7 +142,6 @@ class BNC_575(TriggerableDevice):
 
     def trigger(self, t):
         pass
-        #todo: produce software trigger
 
     def generate_code(self, hdf5_file):
         #TriggerableDevice.generate_code(self, hdf5_file)
@@ -185,7 +200,7 @@ class BNC_575(TriggerableDevice):
 
         channels_configuration = np.empty(self.output_num, channels_dtypes)
         for idx, child in enumerate(self.child_devices):
-            print(f"{child} with index={idx} and properties:  {child.properties}")
+            # print(f"{child} with index={idx} and properties:  {child.properties}")
             channels_configuration[idx]['channel'] = idx + 1
 
             for k in channels_configuration.dtype.names:
