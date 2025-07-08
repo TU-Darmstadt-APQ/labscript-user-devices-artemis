@@ -5,6 +5,7 @@ from blacs.tab_base_classes import Worker
 from labscript import LabscriptError
 from labscript_utils import properties
 from user_devices.logger_config import logger
+from zprocess import rich_print
 
 
 class BNC_575Worker(Worker):
@@ -27,31 +28,62 @@ class BNC_575Worker(Worker):
                                         "output_mode", "amplitude", "sync_source", "wait_counter"]
 
         # Configure internal system
-        self.generator.set_t0_period(getattr(self, 't0_period'))
-        self.generator.set_trigger_mode(getattr(self, 'trigger_mode'))
-        if getattr(self, 'trigger_mode').upper() == 'TRIGGERED':
-            self.generator.set_trigger_logic(getattr(self, 'trigger_logic'))
-            self.generator.set_trigger_level(getattr(self, 'trigger_level'))
-
-        mode = getattr(self, 't0_mode').upper()
-        if mode == 'BURST' and getattr(self, 'burst_count') != -1:
-            self.generator.set_mode(0, mode)
-            self.generator.set_burst_counter(0, getattr(self, 'burst_count'))
-            logger.info(f"[BNC] T0 timer mode is BURST with burst_count = {getattr(self, 'burst_count')}")
-        elif mode == 'DCYCLE' and getattr(self, 'on_count') != -1 and getattr(self, 'off_count') != -1:
-            self.generator.set_mode(0, mode)
-            self.generator.set_on_counter(0, getattr(self, 'on_count'))
-            self.generator.set_off_counter(0, getattr(self, 'off_count'))
-            logger.info(
-                f"[BNC]T0 timer mode is DCYCLE with (on_count, off_count) = ({getattr(self, 'on_count')}, {getattr(self, 'off_count')})")
-        elif mode in ('NORMAL', 'SINGLE'):
-            self.generator.set_mode(0, mode)
-            logger.info(f"[BNC]T0 timer mode is {mode}")
-        else:
-            raise ValueError(f"Invalid T0 timer mode: {mode}. Select from: [NORMAL / SINGLE / BURST / DCYCLE]")
+        system_config = {
+            't0_period': getattr(self, 't0_period', 0),
+            'trigger_mode': getattr(self, 'trigger_mode', 'DISabled'),
+            'trigger_logic': getattr(self, 'trigger_logic', 'RISing'),
+            'trigger_level': getattr(self, 'trigger_level', 0),
+            't0_mode': getattr(self, 't0_mode', 'NORMal'),
+            't0_burst_count': getattr(self, 't0_burst_count', -1),
+            't0_on_count': getattr(self, 't0_on_count', -1),
+            't0_off_count': getattr(self, 't0_off_count', -1),
+        }
+        self.configure_system(system_config)
 
         # configure separate channels
-        for i, channel in enumerate(self.channels_properties):
+        channels_config = []
+        for ch in self.channels_properties:
+            channel_config = {
+                'mode': ch.get('mode', 'NORMal'),
+                'burst_count': ch.get('burst_count', -1),
+                'on_count': ch.get('on_count', -1),
+                'off_count': ch.get('off_count', -1),
+                'delay': ch.get('delay', 0),
+                'width': ch.get('width', 0),
+                'output_mode': ch.get('output_mode', 'NORMal'),
+                'amplitude': ch.get('amplitude', 0),
+                'sync_source': ch.get('sync_source', 'T0'),
+                'polarity': ch.get('polarity', 'NORMal'),
+                'wait_counter': ch.get('wait_counter', 0)
+            }
+            channels_config.append(channel_config)
+        self.configure_channels(channels_config)
+
+    def configure_system(self, system_config):
+        rich_print("System configuration: ", color=GREEN)
+        self.generator.set_t0_period(system_config['t0_period'])
+        self.generator.set_trigger_mode(system_config['trigger_mode'])
+        if system_config['trigger_mode'].upper() == 'TRIGGERED':
+            self.generator.set_trigger_logic(system_config['trigger_logic'])
+            self.generator.set_trigger_level(system_config['trigger_level'])
+
+        self.generator.set_mode(0, system_config['t0_mode'])
+        mode = system_config['t0_mode'].upper()
+        if mode == 'BURST' and system_config['t0_burst_count'] != -1:
+            self.generator.set_burst_counter(0, system_config['t0_burst_count'])
+            logger.info(f"[BNC] T0 timer mode is BURST with burst_count = {system_config['t0_burst_count']}")
+        elif mode == 'DCYCLE' and system_config['t0_on_count'] != -1 and system_config['t0_off_count'] != -1:
+            self.generator.set_on_counter(0, system_config['t0_on_count'])
+            self.generator.set_off_counter(0, system_config['t0_off_count'])
+            logger.info(f"[BNC]T0 timer mode is DCYCLE with (on_count, off_count) = ({system_config['t0_on_count']}, {system_config['t0_off_count']})")
+        elif mode in ('NORMAL', 'SINGLE'):
+            logger.info(f"[BNC] T0 timer mode is {system_config['t0_mode']}")
+        else:
+            raise ValueError(f"Invalid T0 timer mode: {system_config['t0_mode']}. Select from: [NORMAL / SINGLE / BURST / DCYCLE]")
+
+    def configure_channels(self, channels_config):
+        rich_print("Channels configuration: ", color=GREEN)
+        for i, channel in enumerate(channels_config):
             ch = i + 1  # BNC_575 channels are 1-indexed
 
             self.generator.enable_output(ch)
@@ -82,17 +114,18 @@ class BNC_575Worker(Worker):
             self.generator.select_sync_source(ch, channel['sync_source'])
             self.generator.set_polarity(ch, channel['polarity'])
 
+            self.generator.set_wait_counter(ch, channel['wait_counter'])
+
     def shutdown(self):
         self.connection.close()
 
     def program_manual(self, front_panel_values):
-        print(front_panel_values)
+        pass
 
     def transition_to_buffered(self, device_name, h5_file, initial_values, fresh):
         print(f"---------- Begin transition to Buffered: ----------")
         print(f"---------- END transition to Buffered: ----------")
         return
-
 
     def transition_to_manual(self): 
         """transitions the device from buffered to manual mode to read/save measurements from hardware
@@ -115,5 +148,41 @@ class BNC_575Worker(Worker):
     def trigger(self, kwargs):
         self.generator.generate_trigger()
 
-    
+    def configure(self, config_list):
+        rich_print("Configure device from front panel ! ", color=GREEN)
+        system, channels = config_list
+
+        # extend incomplete system configuration from GUI with attributes
+        system_config = {
+            't0_period': system['t0_period'],
+            'trigger_mode': system['trigger_mode'],
+            'trigger_logic': getattr(self, 'trigger_logic', 'RISing'),
+            'trigger_level': getattr(self, 'trigger_level', 0),
+            't0_mode':  system['t0_mode'],
+            't0_burst_count': system['t0_burst_count'],
+            't0_on_count': system['t0_on_count'],
+            't0_off_count': system['t0_off_count'],
+        }
+
+        channel_keys = ["delay", "width", "mode", "burst_count",
+                        "on_count", "off_count", "polarity",
+                        "output_mode", "amplitude", "sync_source", "wait_counter"]
+
+        channels_config = []
+        for idx, ch in enumerate(channels):
+            if idx + 1 > len(self.channels_properties):
+                break
+            ch_config = {}
+            for key in channel_keys:
+                ch_config[key] = ch[key] if key in ch else self.channels_properties[idx].get(key)
+            channels_config.append(ch_config)
+
+        self.configure_system(system_config)
+        self.configure_channels(channels_config)
+
+
+
+# --------------------contants
+BLUE = '#66D9EF'
+GREEN = '#097969'
         
