@@ -67,7 +67,7 @@ class BNC_575Worker(Worker):
             self.generator.set_trigger_logic(system_config['trigger_logic'])
             self.generator.set_trigger_level(system_config['trigger_level'])
 
-        self.generator.set_mode(0, system_config['t0_mode'])
+        self.generator.set_t0_mode(system_config['t0_mode'])
         mode = system_config['t0_mode'].upper()
         if mode == 'BURST' and system_config['t0_burst_count'] != -1:
             self.generator.set_burst_counter(0, system_config['t0_burst_count'])

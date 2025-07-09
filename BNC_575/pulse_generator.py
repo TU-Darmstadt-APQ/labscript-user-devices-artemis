@@ -1,3 +1,5 @@
+import time
+
 import serial
 import numpy as np
 from labscript.labscript import LabscriptError
@@ -15,24 +17,28 @@ class PulseGenerator:
         logger.info(f"[BNC] <initialising Pulse Generator>")
         self.verbose = verbose
         self.port = port
-        self.baud_rate = baud_rate
+        self.baud_rate = 38400
 
         # connecting to connectionice
         self.connection = serial.Serial(self.port, self.baud_rate, timeout=1) # what is the exact response time
         logger.info(f"[BNC] Pulse Generator Serial connection opened on {self.port} at {self.baud_rate} bps")
+        self.reset_device()
         identity = self.identify_device()
         print(f"Connected to {identity}")
         logger.debug(f"[BNC] Received from BNC Serial: {identity}")
 
         # initialize connection
-        self.reset_device()
-        self.set_baud_rate(baud_rate)
+        # self.reset_device()
+        # self.set_baud_rate(baud_rate)
 
     ### Common commands
 
     def identify_device(self):  # Returns identification
         self.connection.write(('*IDN?\r\n').encode())
-        response = self.connection.readline().decode().strip()
+        self.connection.flush()
+        time.sleep(0.1)
+        echo = self.connection.readline().decode(errors='ignore').strip()
+        response = self.connection.readline().decode(errors='ignore').strip()
         return response
 
     def reset_device(self): # Resets to default state
@@ -46,7 +52,7 @@ class PulseGenerator:
     def generate_trigger(self):
         self.send_command('*TRG')
         if self.verbose:
-            print("Generate software trigger.")
+            print("\n################# Generate software trigger. ####################\n")
 
     ### Basic intern system commands
 
@@ -67,7 +73,7 @@ class PulseGenerator:
             mode (str): The mode to set. Options are 'NORMAL', 'SINGLE', 'BURST'.
         """
         mode = self._normalize(mode)
-        if mode not in ['NORMAL', 'SINGLE', 'BURST', 'DCYCLE']:
+        if mode.upper() not in ['NORMAL', 'SINGLE', 'BURST', 'DCYCLE']:
             raise ValueError(f"Invalid t0 mode={mode}. Choose from 'NORMal', 'SINGLe', 'BURSt', 'DCYCLe'.")
         self.send_command(f':PULSE0:MODE {mode}')
         if self.verbose:
@@ -147,7 +153,7 @@ class PulseGenerator:
             mode (str): The mode to set. Options are 'NORMAL', 'SINGLE', 'BURST'.
         """
         mode = self._normalize(mode)
-        if mode not in ['NORMAL', 'SINGLE', 'BURST', 'DCYCLE']:
+        if mode.upper() not in ['NORMAL', 'SINGLE', 'BURST', 'DCYCLE']:
             raise ValueError(f"Invalid mode={mode}. Choose from 'NORMAL', 'SINGLE', 'BURST', 'DCYCLE'.")
         self.send_command(f':PULSE{channel}:CMODe {mode}')
         if self.verbose:
@@ -171,7 +177,7 @@ class PulseGenerator:
 
     def set_polarity(self, channel, polarity):
         polarity = self._normalize(polarity)
-        if polarity not in ['NORMAL', 'COMPLEMENT', 'INVERTED']:
+        if polarity.upper() not in ['NORMAL', 'COMPLEMENT', 'INVERTED']:
             raise ValueError(f"Invalid polarity={polarity}. Choose from [NORMal / COMPlement / INVerted]")
         self.send_command(f':PULSE{channel}:POL {polarity}')
 
@@ -179,21 +185,26 @@ class PulseGenerator:
     ### helpers
     def send_command(self, cmd: str):
         self.connection.write((cmd + '\r\n').encode())
+        self.connection.flush()
+        time.sleep(0.1)
         response = self.receive_from_BNC()
         logger.debug(f"[BNC] Sent: {cmd} \t Received: {response}")
 
     def receive_from_BNC(self):
         try:
-            response = self.connection.readline().decode().strip()
+            echo = self.connection.readline().decode(errors='ignore').strip()
+            response = self.connection.readline().decode(errors='ignore').strip()
             # logger.debug(f"[BNC] Received from BNC Serial: {response}")
-            if not response or response.lower() != 'ok':
-                raise LabscriptError(f'Device responded with error:  {response}')
-            return True
+            # if not response or response.lower() != 'ok':
+            #     raise LabscriptError(f'Device responded with error:  {response}')
+            # return True
+            return response
         except Exception as e:
             logger.error(f"Serial read failed: {e}")
             return 'SERIAL_ERROR'
 
     def _normalize(self, value):
-        if isinstance(value, bytes):
-            value = value.decode('utf-8')
-        return str(value).strip().upper()
+        # if isinstance(value, bytes):
+        #     value = value.decode('utf-8')
+        # return str(value).strip().upper()
+        return value

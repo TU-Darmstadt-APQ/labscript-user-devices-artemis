@@ -115,8 +115,8 @@ class ChannelWidget(QWidget):
         mode = self._widgets['mode'].currentText().upper()
         return {
             'mode': self._widgets['mode'].currentText(),
-            'width': self._widgets['width']._spin_widget.value(),
-            'delay': self._widgets['delay']._spin_widget.value(),
+            'width': round(self._widgets['width']._spin_widget.value(), 5),
+            'delay': round(self._widgets['delay']._spin_widget.value(), 5),
             'wait_counter': self._widgets['wait']._spin_widget.value(),
             'sync_source': self._widgets['sync_source'].currentText(),
             'burst_count': self._widgets['burst_count']._spin_widget.value() if mode == 'BURST' else None,
@@ -204,7 +204,7 @@ class SystemWidget(QWidget):
         return {
             't0_mode': self._widgets['mode'].currentText(),
             'trigger_mode': 'TRIGgered' if self._widgets['trigger mode'].isChecked() else 'DISabled',
-            't0_period': self._widgets['period']._spin_widget.value(),
+            't0_period': round(self._widgets['period']._spin_widget.value(), 7),
             't0_burst_count': self._widgets['burst_count']._spin_widget.value() if mode == 'BURST' else None,
             't0_on_count': self._widgets['on_count']._spin_widget.value() if mode == 'DCYCLE' else None,
             't0_off_count': self._widgets['off_count']._spin_widget.value() if mode == 'DCYCLE' else None,
