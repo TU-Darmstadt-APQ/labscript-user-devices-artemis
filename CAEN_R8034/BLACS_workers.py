@@ -14,14 +14,14 @@ from datetime import datetime
 class CAENWorker(Worker):
     def init(self):
         """Initializes connection to CAEN device (Serial or USB)"""
-        self.using_usb = False
-        # if hasattr(self, 'vid') and hasattr(self, 'pid') and self.vid and self.pid:
-        #     self.using_usb = True
-        #     self._init_usb()
-        # elif self.port:
-        #     self._init_serial()
-        # else:
-        #     raise LabscriptError("No valid connection method (USB or Serial) specified.")
+        self.using_usb = True
+        if hasattr(self, 'vid') and hasattr(self, 'pid') and self.vid and self.pid:
+            self.using_usb = True
+            self._init_usb()
+        elif self.port:
+            self._init_serial()
+        else:
+            raise LabscriptError("No valid connection method (USB or Serial) specified.")
         self._init_serial()
         self.final_values = {}
 
@@ -34,15 +34,17 @@ class CAENWorker(Worker):
         try:
             self.dev = usb.core.find(idVendor=self.vid, idProduct=self.pid)
             if self.dev is None:
-                raise LabscriptError(f"[CAEN] CAEN USB device not found (VID={hex(self.vid)}, PID={hex(self.pid)}).")
-
-            if self.dev.is_kernel_driver_active(0):
-                self.dev.detach_kernel_driver(0)
+                raise LabscriptError(f"[CAEN] CAEN USB device not found (VID={self.vid}, PID={self.pid}).")
+            # if self.dev.is_kernel_driver_active(0):
+            #     self.dev.detach_kernel_driver(0)
 
             self.dev.set_configuration()
+            logger.debug(f"ffffffffffffffffffffff")
             cfg = self.dev.get_active_configuration()
-            intf = cfg[(0, 0)]
 
+            logger.debug(f"cfg = {cfg}")
+            intf = cfg[(0, 0)]
+            logger.debug(f"intf = {intf}")
             self.ep_out = usb.util.find_descriptor(
                 intf,
                 custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_OUT
@@ -51,6 +53,8 @@ class CAENWorker(Worker):
                 intf,
                 custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_IN
             )
+
+            logger.info(f"ep out: {self.ep_out}, ep)in = {self.ep_in}")
 
             if self.ep_out is None or self.ep_in is None:
                 raise LabscriptError("Could not find USB IN/OUT endpoints.")

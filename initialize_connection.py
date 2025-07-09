@@ -27,8 +27,11 @@ from user_devices.BS_cryo.models.BS_1_8 import BS_1_8
 from user_devices.HV_stahl.models.HV_200_8 import HV_200_8
 from user_devices.HV_stahl.models.HV_250_8 import HV_250_8
 from user_devices.HV_stahl.models.HV_500_8 import HV_500_8
-from labscript_devices.BS_Series.models.BS_341A_spec import BS_341A_spec
-from labscript_devices.BS_Series.models.BS_341A import BS_341A
+# from labscript_devices.BS_Series.models.BS_341A_spec import BS_341A_spec
+# from labscript_devices.BS_Series.models.BS_341A import BS_341A
+
+from user_devices.logger_config import logger
+
 
 
 def init_UM(clockline):
@@ -41,8 +44,9 @@ def init_UM(clockline):
     AnalogOut(name="CRES_5", parent_device=UM_ST, connection='CH 2')
 
 def init_BNC_575():
-    BNC_575(name='pulse_generator', port='/dev/pts/4', trigger_mode='DISabled')
-    PulseChannel(name='pulse_1_for_CAEN', connection='pulse 1', parent_device=pulse_generator, delay=2e-3, width=1, mode='SINGle')
+    # sudo dmesg | grep tty
+    BNC_575(name='pulse_generator', port='/dev/ttyUSB0', trigger_mode='DISabled')
+    PulseChannel(name='pulse_1_for_CAEN', connection='pulse 1', parent_device=pulse_generator, delay=4, width=1, mode='SINGle')
     PulseChannel(name='pulse_2_for_CC', connection='pulse 2', parent_device=pulse_generator, delay=1+2e-3, width=1, mode='SINGle')
     PulseChannel(name='pulse_3_for_MCT', connection='pulse 3', parent_device=pulse_generator, delay=2+2e-3, width=1, mode='SINGle')
     PulseChannel(name='pulse_4', connection='pulse 4', parent_device=pulse_generator, delay=2e-3, width=1)
@@ -73,10 +77,13 @@ def init_BS_341A(clockline):
     AnalogOut(name='ao1_bs_norm', parent_device=source_for_ST, connection='CH02')
 
 def init_CAEN(clockline):
+    logger.debug("INIT  VOLTAGE SOURCE")
     CAEN(
         name='voltage_source_serial',
         parent_device=clockline,
-        port='/dev/pts/6',
+        port='',
+        vid=0x21e1,
+        pid=0x0014,
         baud_rate=9600
     )
     AnalogOut(name='caen_ch_0', parent_device=voltage_source_serial, connection='CH 0', default_value=0)

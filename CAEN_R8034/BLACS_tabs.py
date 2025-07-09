@@ -6,6 +6,7 @@ from blacs.tab_base_classes import MODE_MANUAL
 
 class CAENTab(DeviceTab):
     def initialise_GUI(self):
+        logger.debug("INIT GUI")
         # Analog output properties dictionary
         self.base_unit = 'V'
         self.base_min = 0
@@ -47,12 +48,16 @@ class CAENTab(DeviceTab):
             raise ValueError(f"Device '{self.device_name}' not found in the connection table.")
         
         # Look up at the connection table for device properties
+        vid =  device.properties["vid"]
+        pid = device.properties["pid"]
         port = device.properties["port"]
         baud_rate = device.properties["baud_rate"]
         
         worker_kwargs = {
             "name": self.device_name + '_main',
             "port": port,
+            "vid": vid,
+            "pid": pid,
             "baud_rate": baud_rate
         }
         
