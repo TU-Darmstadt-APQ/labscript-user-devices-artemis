@@ -1,16 +1,17 @@
 from fontTools.ttLib.tables.ttProgram import instructions
 from labscript_devices import register_classes
-from labscript import Device, set_passed_properties, DigitalOut
+from labscript import Device, set_passed_properties, DigitalOut, Output
 from labscript import TriggerableDevice, config
 import numpy as np
 from user_devices.logger_config import logger
 
-class PulseChannel(Device):
+class PulseChannel(Output):
     description = 'Channel of BNC_575'
 
     @set_passed_properties(
         property_names={"connection_table_properties": ["name",
                                                         "connection",
+                                                        "state",
                                                         "delay",
                                                         "width",
                                                         "mode",
@@ -28,8 +29,9 @@ class PulseChannel(Device):
             name,
             parent_device,
             connection,
-            delay,
-            width,
+            delay=2e-3,
+            width=1,
+            state='ON',
             mode='NORMal',
             burst_count=None,
             on_count=None,
@@ -59,8 +61,9 @@ class PulseChannel(Device):
         :param wait_counter: 0-9999999
         :param kwargs:
         """
-        Device.__init__(self, name, parent_device, connection, **kwargs)
+        super().__init__(name, parent_device, connection, **kwargs)
         self.properties = {
+            'state': state,
             'mode': mode,
             'delay': delay,
             'width': width,
@@ -75,7 +78,7 @@ class PulseChannel(Device):
         }
 
 
-class BNC_575(TriggerableDevice):
+class BNC_575(Device): #todo: ethernet
     description = 'BNC575-Pulse-Generator'
     allowed_children = [PulseChannel]
     @set_passed_properties(
@@ -93,9 +96,9 @@ class BNC_575(TriggerableDevice):
     def __init__(self,
                  name, # !!!
                  port='', # !!!
-                 baud_rate=115200,
-                 trigger_device=None,
-                 trigger_connection=None,
+                 baud_rate=38400,
+                 parent_device=None,
+                 connection=None,
                  trigger_mode='DISabled', # !!!
                  trigger_logic='RISing',
                  trigger_level=5,
@@ -131,11 +134,9 @@ class BNC_575(TriggerableDevice):
             'trigger_mode': trigger_mode,
             'trigger_logic': trigger_logic,
             'trigger_level': trigger_level,
-            'trigger_device': trigger_device
         }
-        TriggerableDevice.__init__( self, name, parent_device=None, connection=None, parentless=True, **kwargs)
+        super().__init__(name, parent_device=None, connection=None, **kwargs)
         self.BLACS_connection = '%s,%s' % (port, str(baud_rate))
-        self.trigger_connection = '%s' % (trigger_connection)
 
     def add_device(self, device):
         Device.add_device(self, device)
@@ -185,6 +186,7 @@ class BNC_575(TriggerableDevice):
         self.output_num = len(self.child_devices)
         channels_dtypes = [ #should be the same as 'properties' attribute of PulseChannel
             ('channel', np.int32),
+            ('state', np.dtype('S20')),
             ('mode', np.dtype('S20')),
             ('delay', np.float64),
             ('width', np.float64),

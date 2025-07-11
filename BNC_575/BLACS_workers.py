@@ -22,7 +22,7 @@ class BNC_575Worker(Worker):
             "t0_mode", "t0_period", "t0_burst_count",
             "t0_on_count", "t0_off_count", "trigger_logic", "trigger_level"
         ]
-        worker_property_channel_keys = ["name", "connection",
+        worker_property_channel_keys = ["name", "connection", "state",
                                         "delay", "width", "mode", "burst_count",
                                         "on_count", "off_count", "polarity",
                                         "output_mode", "amplitude", "sync_source", "wait_counter"]
@@ -44,6 +44,7 @@ class BNC_575Worker(Worker):
         channels_config = []
         for ch in self.channels_properties:
             channel_config = {
+                'state': ch.get('state', 'ON'),
                 'mode': ch.get('mode', 'NORMal'),
                 'burst_count': ch.get('burst_count', -1),
                 'on_count': ch.get('on_count', -1),
@@ -58,6 +59,9 @@ class BNC_575Worker(Worker):
             }
             channels_config.append(channel_config)
         self.configure_channels(channels_config)
+
+        # todo: pass values to GUI
+
 
     def configure_system(self, system_config):
         rich_print("System configuration: ", color=GREEN)
@@ -86,8 +90,8 @@ class BNC_575Worker(Worker):
         for i, channel in enumerate(channels_config):
             ch = i + 1  # BNC_575 channels are 1-indexed
 
-            self.generator.enable_output(ch)
             self.generator.set_mode(ch, channel['mode'])
+            (self.generator.enable_output if channel['state'].upper() == 'ON' else self.generator.disable_output)(ch)
 
             output_mode = channel['mode'].upper()
             if output_mode == 'BURST' and channel['burst_count'] not in (None, -1):
@@ -143,7 +147,7 @@ class BNC_575Worker(Worker):
             return self.transition_to_manual()
         except Exception as e:
             print(f"Failed to abort properly: {e}")
-            return
+            return None
 
     def trigger(self, kwargs):
         self.generator.generate_trigger()
@@ -164,7 +168,8 @@ class BNC_575Worker(Worker):
             't0_off_count': system['t0_off_count'],
         }
 
-        channel_keys = ["delay", "width", "mode", "burst_count",
+        # configure channels
+        channel_keys = ["state", "delay", "width", "mode", "burst_count",
                         "on_count", "off_count", "polarity",
                         "output_mode", "amplitude", "sync_source", "wait_counter"]
 
@@ -179,6 +184,9 @@ class BNC_575Worker(Worker):
 
         self.configure_system(system_config)
         self.configure_channels(channels_config)
+
+    def reset(self):
+        self.generator.reset_device()
 
 
 

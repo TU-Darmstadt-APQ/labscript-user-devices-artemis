@@ -18,12 +18,11 @@ class PulseGenerator:
         logger.info(f"[BNC] <initialising Pulse Generator>")
         self.verbose = verbose
         self.port = port
-        self.baud_rate = 38400
+        self.baud_rate = baud_rate
 
         # connecting to connectionice
-        self.connection = serial.Serial(self.port, self.baud_rate, timeout=1) # what is the exact response time
+        self.connection = serial.Serial(self.port, self.baud_rate, timeout=1)
         logger.info(f"[BNC] Pulse Generator Serial connection opened on {self.port} at {self.baud_rate} bps")
-        self.reset_device()
         identity = self.identify_device()
         print(f"Connected to {identity}")
         logger.debug(f"[BNC] Received from BNC Serial: {identity}")
@@ -120,10 +119,14 @@ class PulseGenerator:
     def enable_output(self, channel):
         """Enable output on a specific channel."""
         self.send_command(f':PULSE{channel}:STATE ON')
+        if self.verbose:
+            print(f"Enable channel {channel} output.")
 
     def disable_output(self, channel):
         """Disable output on a specific channel."""
         self.send_command(f':PULSE{channel}:STATE OFF')
+        if self.verbose:
+            print(f"DISable channel {channel} output.")
 
     def set_delay(self, channel, delay):
         """ Set the delay to the specified channel.

@@ -30,7 +30,9 @@ class BNC_575Tab(DeviceTab):
         cols = 2
         conn_names = self.get_channel_names()
 
-        for i in range(8):
+        connection_table = self.settings['connection_table']
+        device = connection_table.find_by_name(self.device_name)
+        for i in range(len(device.child_list)):
             hw_name = f"pulse {i+1}"
             conn_name = conn_names.get(hw_name, '-')
             ch = ChannelWidget(f"pulse {i+1}", connection_name=conn_name)
@@ -45,6 +47,7 @@ class BNC_575Tab(DeviceTab):
         # Buttons
         self.create_control_buttons()
 
+        self.auto_place_widgets(('channels', self.channel_widgets))
         self.supports_remote_value_check(False)
         self.supports_smart_programming(False)
 
@@ -66,6 +69,9 @@ class BNC_575Tab(DeviceTab):
         )
 
         self.primary_worker = "main_worker"
+
+    def get_front_panel_values(self):
+        return self._final_values
 
     def get_children_properties(self):
         children_properties = []
@@ -94,7 +100,6 @@ class BNC_575Tab(DeviceTab):
         self.btn_trigger = QPushButton()
         self.btn_reset = QPushButton()
 
-        #
         style = QApplication.style()
         reset_icon = style.standardIcon(QStyle.SP_DialogResetButton)
         configure_icon = style.standardIcon(QStyle.SP_DialogOkButton)
@@ -103,7 +108,7 @@ class BNC_575Tab(DeviceTab):
         self.btn_trigger.setIcon(trigger_icon)
         self.btn_reset.setIcon(reset_icon)
 
-        # Tooltip for clarity (optional)
+        # Tooltip for clarity
         self.btn_configure.setToolTip("Configure")
         self.btn_trigger.setToolTip("Trigger")
         self.btn_reset.setToolTip("Reset")
@@ -150,44 +155,49 @@ class BNC_575Tab(DeviceTab):
     @define_state(MODE_MANUAL, True)
     def trigger_device(self, checked=None):
         try:
-            yield (self.queue_work(self.primary_worker, 'trigger', []))
+            yield self.queue_work(self.primary_worker, 'trigger', [])
         except Exception as e:
             logger.debug(f"[BNC] Error by send work to worker(trigger): \t {e}")
 
     @define_state(MODE_MANUAL, True)
     def configure_device(self, checked=None):
-        logger.info(f"ALL i Want Is to Configure the device with values from widgets/ huh")
+        logger.info(f"Configure device from GUI.")
 
-        # Get system configuration
+        # Get system and channels configuration
+        system_config = self._collect_system_config()
+        channels_config = self._collect_channels_config()
+
         try:
-            system_config = self.system_box.findChild(SystemWidget).get_config()
-            logger.debug(f"system congif: {system_config}")
+            yield self.queue_work(self.primary_worker, 'configure', [system_config, channels_config])
         except Exception as e:
-            logger.warning(f"Failed to get system config: {e}")
-            system_config = {}
+            logger.error(f"[BNC] Error by send work to worker(configure): {e}")
 
-        # Get channels configuration
-        channels_config = []
+    def reset_device(self):
+        try:
+            yield self.queue_work(self.primary_worker, 'reset', [])
+        except Exception as e:
+            logger.debug(f"[BNC] Error by send work to worker(reset): \t {e}")
+
+
+    ### helpers
+    def _collect_system_config(self):
+        try:
+            system_widget = self.system_box.findChild(SystemWidget)
+            if system_widget:
+                return system_widget.get_config()
+            else:
+                logger.warning("[BNC] SystemWidget not found in system_box.")
+                return {}
+        except Exception as e:
+            logger.warning(f"[BNC] Failed to get system config: {e}")
+            return {}
+
+    def _collect_channels_config(self):
+        configs = []
         for idx, ch_widget in enumerate(self.channel_widgets):
             try:
                 config = ch_widget.get_config()
-                logger.debug(f"channel config: {config}")
-                channels_config.append(config)
+                configs.append(config)
             except Exception as e:
-                logger.warning(f"Failed to get config from {ch_widget._hardware_name}: {e}")
-                config = {}
-
-        logger.debug(f"CHANNELSS config: {channels_config}")
-
-        try:
-            yield (self.queue_work(self.primary_worker, 'configure', [system_config, channels_config]))
-        except Exception as e:
-            logger.debug(f"[BNC] Error by send work to worker(configure): \t {e}")
-
-    def reset_device(self):
-        # logger.info(
-        #     "Now we want to reset the device AND the widgets to their default values. What are they? We don't know. / huh")
-        try:
-            yield (self.queue_work(self.primary_worker, 'reset', []))
-        except Exception as e:
-            logger.debug(f"[BNC] Error by send work to worker(reset): \t {e}")
+                logger.warning(f'[BNC] Failed to get config from {ch_widget._hardware_name}: {e}')
+        return configs

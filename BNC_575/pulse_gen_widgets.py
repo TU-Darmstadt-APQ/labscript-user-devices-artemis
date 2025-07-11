@@ -5,6 +5,8 @@ from qtutils.qt.QtGui import *
 from qtutils.qt.QtWidgets import *
 from labscript_utils.qtwidgets.analogoutput import AnalogOutput
 from labscript_utils.qtwidgets.digitaloutput import DigitalOutput
+from user_devices.logger_config import logger
+
 
 class ChannelWidget(QWidget):
     def __init__(self, hardware_name, connection_name='-', parent=None):
@@ -113,7 +115,9 @@ class ChannelWidget(QWidget):
 
     def get_config(self):
         mode = self._widgets['mode'].currentText().upper()
+        state = 'ON' if self._widgets['state'].state else 'OFF'
         return {
+            'state': state,
             'mode': self._widgets['mode'].currentText(),
             'width': round(self._widgets['width']._spin_widget.value(), 5),
             'delay': round(self._widgets['delay']._spin_widget.value(), 5),
@@ -133,6 +137,7 @@ class ChannelWidget(QWidget):
         widget.set_selected_unit('pulses')
         widget.hide()
         return widget
+
 
 class SystemWidget(QWidget):
     def __init__(self, hardware_name, connection_name='', parent=None):
