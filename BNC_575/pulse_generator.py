@@ -5,6 +5,7 @@ import numpy as np
 from labscript.labscript import LabscriptError
 from user_devices.logger_config import logger
 
+
 class PulseGenerator:
     """ Pulse generator class to establish and maintain the communication with the connectionice. Using SCPI.
     """
@@ -27,14 +28,10 @@ class PulseGenerator:
         print(f"Connected to {identity}")
         logger.debug(f"[BNC] Received from BNC Serial: {identity}")
 
-        # initialize connection
-        # self.reset_device()
-        # self.set_baud_rate(baud_rate)
-
     ### Common commands
 
     def identify_device(self):  # Returns identification
-        self.connection.write(('*IDN?\r\n').encode())
+        self.connection.write('*IDN?\r\n'.encode())
         self.connection.flush()
         time.sleep(0.1)
         echo = self.connection.readline().decode(errors='ignore').strip()
@@ -46,8 +43,14 @@ class PulseGenerator:
         if self.verbose:
             print("Reset to default.")
 
-    def set_baud_rate(self, baud_rate):
+    def set_baud_rate_rs(self, baud_rate):
         self.send_command(f':SYST:SER:BAUD {baud_rate}')
+
+    def set_baud_rate_usb(self, baud_rate):
+        self.send_command(f':SYST:SER:USB {baud_rate}')
+
+    def set_echo(self, state: str): # state = {'ON', 'OFF'}
+        self.send_command(f':SYST:ECH {state}')
 
     def generate_trigger(self):
         self.send_command('*TRG')
@@ -72,7 +75,6 @@ class PulseGenerator:
         Args:
             mode (str): The mode to set. Options are 'NORMAL', 'SINGLE', 'BURST'.
         """
-        mode = self._normalize(mode)
         if mode.upper() not in ['NORMAL', 'SINGLE', 'BURST', 'DCYCLE']:
             raise ValueError(f"Invalid t0 mode={mode}. Choose from 'NORMal', 'SINGLe', 'BURSt', 'DCYCLe'.")
         self.send_command(f':PULSE0:MODE {mode}')
@@ -89,7 +91,7 @@ class PulseGenerator:
             print(f"Set system period to {period}")
 
     def set_trigger_mode(self, mode):
-        self.send_command(f":PULSE0:TRIG:MOD {self._normalize(mode)}")
+        self.send_command(f":PULSE0:TRIG:MOD {mode}")
         if self.verbose:
             print(f"Set trigger mode to {mode}")
 
@@ -144,7 +146,7 @@ class PulseGenerator:
             print(f"Set width on channel {channel} to {width}")
 
     def select_sync_source(self, channel, sync_source):
-        self.send_command(f':PULSE{channel}:SYNC {self._normalize(sync_source)}')
+        self.send_command(f':PULSE{channel}:SYNC {sync_source}')
 
     def set_mode(self, channel, mode):
         """ Set the mode of the pulse generator.
@@ -152,7 +154,6 @@ class PulseGenerator:
             channel (int): Channel number [1:8]
             mode (str): The mode to set. Options are 'NORMAL', 'SINGLE', 'BURST'.
         """
-        mode = self._normalize(mode)
         if mode.upper() not in ['NORMAL', 'SINGLE', 'BURST', 'DCYCLE']:
             raise ValueError(f"Invalid mode={mode}. Choose from 'NORMAL', 'SINGLE', 'BURST', 'DCYCLE'.")
         self.send_command(f':PULSE{channel}:CMODe {mode}')
@@ -176,11 +177,9 @@ class PulseGenerator:
         self.send_command(f':PULSE{channel}:OUTPut:AMP {amplitude}')
 
     def set_polarity(self, channel, polarity):
-        polarity = self._normalize(polarity)
         if polarity.upper() not in ['NORMAL', 'COMPLEMENT', 'INVERTED']:
             raise ValueError(f"Invalid polarity={polarity}. Choose from [NORMal / COMPlement / INVerted]")
         self.send_command(f':PULSE{channel}:POL {polarity}')
-
 
     ### helpers
     def send_command(self, cmd: str):
@@ -188,23 +187,35 @@ class PulseGenerator:
         self.connection.flush()
         time.sleep(0.1)
         response = self.receive_from_BNC()
+        check_response(response)
         logger.debug(f"[BNC] Sent: {cmd} \t Received: {response}")
 
-    def receive_from_BNC(self):
+    def receive_from_BNC(self) -> str:
         try:
             echo = self.connection.readline().decode(errors='ignore').strip()
             response = self.connection.readline().decode(errors='ignore').strip()
-            # logger.debug(f"[BNC] Received from BNC Serial: {response}")
+            # logger.debug(f"[BNC] Received from BNC Serial: \t echo: {echo} | response: {response}")
             # if not response or response.lower() != 'ok':
             #     raise LabscriptError(f'Device responded with error:  {response}')
-            # return True
             return response
         except Exception as e:
             logger.error(f"Serial read failed: {e}")
             return 'SERIAL_ERROR'
 
-    def _normalize(self, value):
-        # if isinstance(value, bytes):
-        #     value = value.decode('utf-8')
-        # return str(value).strip().upper()
-        return value
+
+
+def check_response(response):
+    error_codes = {
+        '1': 'Incorrect prefix, i.e. no colon or * to start command.',
+        '2': 'Missing command keyword.',
+        '3': 'Invalid command keyword.',
+        '4': 'Missing parameter.',
+        '5': 'Invalid parameter.',
+        '6': 'Query only, command needs a question mark.',
+        '7': 'Invalid query, command does not have a query form.',
+        '8': 'Command unavailable in current system state.'
+    }
+    if response.startswith('?'):
+        response = response[1:] # '?n' -> 'n'
+        if response in error_codes.keys():
+            raise LabscriptError(f"The device responded with an error: {error_codes[response]}")

@@ -22,7 +22,7 @@ def read_command(master):
     buffer = b""
     while not buffer.endswith(b"\r\n"):
         buffer += os.read(master, 1)
-    return buffer.strip()
+    return buffer
 
 def test_serial():
     master, slave = pty.openpty()
@@ -32,16 +32,19 @@ def test_serial():
     while True:
         command = read_command(master).decode()
         if command:
-            print(f"command {command}")
             if command.startswith("*IDN?"):
                 response = "OK_IDN_came\r\n"
+                os.write(master, command.encode())
                 os.write(master, response.encode())
             elif command.startswith(":PULS") or command.startswith(":SYST") or command.startswith("*"):
                 response = 'ok\r\n'
+                os.write(master, command.encode())
                 os.write(master, response.encode())
             else:
-                response = "err\r"
+                response = "err\r\n"
+                os.write(master, command.encode())
                 os.write(master, response.encode())
+            print(f"command {command!r}:\t response: {command!r} | {response!r}")
          
 if __name__ == "__main__":
     test_serial()
