@@ -15,6 +15,9 @@ class CAENWorker(Worker):
         self.final_values = {}
         self.caen = Caen(self.port, self.baud_rate, self.pid, self.vid)
 
+        # set remote control
+        self.caen.set_control_mode('REMOTE')
+
         # for running the buffered experiment in a separate thread:
         self.thread = None
         self._stop_event = threading.Event()
