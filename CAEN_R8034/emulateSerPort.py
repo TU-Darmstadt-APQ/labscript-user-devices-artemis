@@ -37,6 +37,9 @@ def test_serial():
             if command.startswith("$CMD:SET"):
                 response = "#CMD:OK\r\n"
                 os.write(master, response.encode())
+            elif command.startswith("$CMD:MON"):
+                response = "#CMD:OK,VAL:2000.0\r\n"
+                os.write(master, response.encode())
             else:
                 response = "err\r\n"
                 os.write(master, response.encode())

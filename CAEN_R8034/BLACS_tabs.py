@@ -6,7 +6,6 @@ from blacs.tab_base_classes import MODE_MANUAL
 
 class CAENTab(DeviceTab):
     def initialise_GUI(self):
-        logger.debug("INIT GUI")
         # Analog output properties dictionary
         self.base_unit = 'V'
         self.base_min = 0

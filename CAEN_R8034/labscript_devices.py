@@ -18,7 +18,10 @@ class CAEN(IntermediateDevice):
     @set_passed_properties({"connection_table_properties": ["port", "baud_rate", "pid", "vid"]})
     def __init__(self, name, port='', vid='', pid='', baud_rate=9600, parent_device=None, connection=None, **kwargs):
         IntermediateDevice.__init__(self, name, parent_device, **kwargs)
-        self.BLACS_connection = '%s,%s' % (vid, pid)
+        if port != '':
+            self.BLACS_connection = '%s,%s' % (port, baud_rate)
+        else:
+            self.BLACS_connection = '%s,%s' % (vid, pid)
         logger.debug("INIT CAEN")
    
     def add_device(self, device):
