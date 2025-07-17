@@ -134,3 +134,24 @@ and a user specified name from the connection table of a labscript file
 - https://github.com/naqslab/naqslab_devices/blob/master/README.md
 - https://github.com/fretchen/synqs_devices/blob/master/yun_temp/blacs_tabs.py
 - https://gitlab.tuwien.ac.at/quantuminfo/experiment-control/labscript-userlib/leolab_devices
+
+--- 
+# IDS Software Suite
+NOTE: To be able to access Software Suite, you must be authorized with ids account.
+The readme installation guide you can find here: [readme.html](https://de.ids-imaging.com/files/downloads/ids-software-suite/readme/readme-ids-software-suite-linux-4.96.1_EN.html)
+
+Note: before executing bash scripts you may need to make them executable:
+`chmod +x ./install_ids_soft_suite.sh`, `chmod +x ./check_dep.sh`
+Steps:
+1. Install dependencies:
+```bash
+./check_dep.sh
+```
+2. Install the package via dpkg
+```bash
+./install_ids_soft_suite.sh 
+```
+
+
+
+
