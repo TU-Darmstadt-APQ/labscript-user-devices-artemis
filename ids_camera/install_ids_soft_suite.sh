@@ -40,12 +40,22 @@ fi
 echo -e "Do you want to install missing packages? [y/n]"
 read -r answer
 
+TARGET_DIR=~/Downloads/ids-software-suite-linux-64-4.96.1-debian
+cd "$TARGET_DIR" || exit 1
+
 if [[ "$answer" == "y" || "$answer" == "Y" ]]; then
   for pkg in "${MISSING_PACKAGES[@]}"; do
-    echo "Installing: $pkg"
-    sudo dpkg -i "$pkg"
-    # Fix broken dependencies if needed
-    sudo apt --fix-broken install
+    echo -e "Do you want to install ${GREEN}$pkg${NC}? [y/N]"
+    read -r install_answer
+    if [[ "$install_answer" =~ ^[Yy]$ ]]; then
+      echo "Installing: $pkg"
+      sudo dpkg -i "$pkg" || {
+        echo -e "${RED}dpkg failed. Attempting to fix broken dependencies...${NC}"
+        sudo apt --fix-broken install
+      }
+    else
+      echo -e "${RED}Skipped${NC}: $pkg"
+    fi
   done
 else
   echo "Installation aborted."
