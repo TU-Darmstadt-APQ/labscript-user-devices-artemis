@@ -60,6 +60,8 @@ class BNC_575Worker(Worker):
             channels_config.append(channel_config)
         self.configure_channels(channels_config)
 
+        # arms the instrument
+        self.generator.enable_output_for_all()
         # todo: pass values to GUI
 
 
@@ -184,6 +186,9 @@ class BNC_575Worker(Worker):
 
         self.configure_system(system_config)
         self.configure_channels(channels_config)
+
+        # arm the instrument
+        self.generator.enable_output_for_all()
 
     def reset(self):
         self.generator.reset_device()

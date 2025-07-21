@@ -16,6 +16,8 @@ class PulseGenerator:
                  verbose=False
                  ):
         logger.info(f"[BNC] <initialising Pulse Generator>")
+        self.echo_on = True
+
         self.verbose = verbose
         self.port = port
         self.baud_rate = baud_rate
@@ -49,7 +51,13 @@ class PulseGenerator:
         self.send_command(f':SYST:SER:USB {baud_rate}')
 
     def set_echo(self, state: str): # state = {'ON', 'OFF'}
-        self.send_command(f':SYST:ECH {state}')
+        # todo: returns ?3 error code: Invalid keyword...
+        state_upper = state.upper()
+        self.send_command(f':SYST:ECHO {state_upper}')
+        if state_upper == 'ON':
+            self.echo_on = True
+        else:
+            self.echo_on = False
 
     def generate_trigger(self):
         self.send_command('*TRG')
@@ -62,7 +70,7 @@ class PulseGenerator:
         """Enable output on all channels."""
         self.send_command(':PULSE0:STATE ON')
         if self.verbose:
-            print("Enable output for all channels.")
+            print("Enable output for all channels. ARMS the instrument")
 
     def disable_output_for_all(self):
         self.send_command(':PULSE0:STATE OFF')
@@ -190,12 +198,13 @@ class PulseGenerator:
         self.connection.flush()
         time.sleep(0.1)
         response = self.receive_from_BNC()
-        check_response(response)
+        check_response(cmd, response)
         logger.debug(f"[BNC] Sent: {cmd} \t Received: {response}")
 
     def receive_from_BNC(self) -> str:
         try:
-            echo = self.connection.readline().decode(errors='ignore').strip()
+            if self.echo_on:
+                echo = self.connection.readline().decode(errors='ignore').strip()
             response = self.connection.readline().decode(errors='ignore').strip()
             # logger.debug(f"[BNC] Received from BNC Serial: \t echo: {echo} | response: {response}")
             # if not response or response.lower() != 'ok':
@@ -207,7 +216,7 @@ class PulseGenerator:
 
 
 
-def check_response(response):
+def check_response(cmd, response):
     error_codes = {
         '1': 'Incorrect prefix, i.e. no colon or * to start command.',
         '2': 'Missing command keyword.',
@@ -221,4 +230,4 @@ def check_response(response):
     if response.startswith('?'):
         response = response[1:] # '?n' -> 'n'
         if response in error_codes.keys():
-            raise LabscriptError(f"The device responded with an error: {error_codes[response]}")
+            raise LabscriptError(f"The device responded on {cmd} --> {response} with an error: {error_codes[response]}")
