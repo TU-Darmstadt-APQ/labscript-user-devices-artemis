@@ -13,10 +13,7 @@ class CAENWorker(Worker):
     def init(self):
         """Initializes connection to CAEN device (direct Serial or USB or Ethernet)"""
         self.final_values = {}
-        self.caen = Caen(self.port, self.baud_rate, self.pid, self.vid)
-
-        # set remote control
-        self.caen.set_control_mode('REMOTE')
+        self.caen = Caen(self.port, self.baud_rate, self.vid, self.pid)
 
         # for running the buffered experiment in a separate thread:
         self.thread = None
@@ -157,6 +154,15 @@ class CAENWorker(Worker):
             self.caen.set_voltage(ch_num, voltage)
             print(f"→ {channel}: {voltage:.2f} V")
             logger.info(f"[CAEN] Setting {channel} to {voltage:.2f} V (manual mode)")
+
+    def monitor_CAEN(self, kwargs):
+        """ Monitor voltages on channels, display in terminal """
+        rich_print("Channels monitor voltage values", color=BLUE)
+        for channel, voltage in self.front_panel_values.items():
+            ch_num = self._get_channel_num(channel)
+            mon_voltage = self.caen.monitor_voltage(ch_num)
+            print(f"→ {channel}: Monitor: {mon_voltage:.2f} \t GUI: {voltage:.2f} V")
+            logger.info(f"[CAEN] Monitoring {channel} with {mon_voltage:.2f} V (manual mode)")
 
 # --------------------contants
 BLUE = '#66D9EF'

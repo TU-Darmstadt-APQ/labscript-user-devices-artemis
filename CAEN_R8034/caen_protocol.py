@@ -4,6 +4,7 @@ import socket
 import serial
 from labscript import LabscriptError
 from user_devices.logger_config import logger
+import time
 
 
 class Caen:
@@ -38,10 +39,10 @@ class Caen:
         self.ethernet_host = '192.168.0.250'
         self.ethernet_port = 1470
 
-        if vid and pid:
+        if vid != 0x0 and pid != 0x0:
             self.using_usb = True
             self.open_usb()
-        elif port:
+        elif port != '':
             self.using_serial = True
             self.open_serial()
         else:
@@ -76,18 +77,44 @@ class Caen:
             self.dev.set_configuration()
             # get an endpoint instance
             cfg = self.dev.get_active_configuration()
-            intf = cfg[(0, 0)]
 
-            self.ep_out = usb.util.find_descriptor(
-                intf,
-                custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_OUT
-            )
-            self.ep_in = usb.util.find_descriptor(
-                intf,
-                custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_IN
-            )
+            self.ep_out = None
+            self.ep_in = None
+            selected_intf = None
+            # todo: do better
+            for interface in cfg:
+                for alt_setting in range(interface.bNumEndpoints):  # Можно просто перебирать альтернативы интерфейса
+                    intf = usb.util.find_descriptor(cfg, bInterfaceNumber=interface.bInterfaceNumber,
+                                                    bAlternateSetting=alt_setting)
+                    if intf is None:
+                        continue
 
-            logger.info(f"ep out: {self.ep_out}, ep)in = {self.ep_in}")
+                    # Ищем Bulk OUT
+                    ep_out_candidate = usb.util.find_descriptor(
+                        intf,
+                        custom_match=lambda e: (
+                                    usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_OUT and
+                                    usb.util.endpoint_type(e.bmAttributes) == usb.util.ENDPOINT_TYPE_BULK)
+                    )
+
+                    ep_in_candidate = usb.util.find_descriptor(
+                        intf,
+                        custom_match=lambda e: (
+                                    usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_IN and
+                                    usb.util.endpoint_type(e.bmAttributes) == usb.util.ENDPOINT_TYPE_BULK)
+                    )
+
+                    if ep_in_candidate and ep_out_candidate:
+                        self.ep_in = ep_in_candidate
+                        self.ep_out = ep_out_candidate
+                        selected_intf = intf
+                        print(f"Selected interface {interface.bInterfaceNumber} alt {alt_setting}")
+                        break
+                if self.ep_in and self.ep_out:
+                    break
+
+
+            logger.info(f"ep out: {self.ep_out}, ep in = {self.ep_in}")
 
             if self.ep_out is None or self.ep_in is None:
                 raise LabscriptError("Could not find USB IN/OUT endpoints.")
@@ -125,7 +152,7 @@ class Caen:
     ### board commands
     def set_control_mode(self, mode: str):
         mode = mode.upper()
-        cmd = f"$CMD:SET,PAR:BDCTR,VAL:{mode}"
+        cmd = f"$CMD:INFO,PAR:BDCTR,VAL:{mode}"
         self.query(cmd)
 
         # self.send_to_CAEN(cmd)
@@ -287,6 +314,7 @@ class Caen:
         try:
             if self.using_usb:
                 self.ep_out.write(data)
+                time.sleep(0.1)
             elif self.using_serial:
                 self.serial.write(data)
             elif self.using_ethernet:
@@ -301,8 +329,8 @@ class Caen:
         try:
             if self.using_usb:
                 response = self.ep_in.read(64, timeout=3)
-                decoded = response.decode(errors='ignore').strip()
-                return decoded
+                response_str = bytes(response).decode('ascii', errors='ignore')
+                return response_str
             if self.using_serial:
                 response = self.serial.readline().decode().strip()
                 return response

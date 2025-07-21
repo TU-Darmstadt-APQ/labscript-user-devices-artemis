@@ -30,10 +30,12 @@ class CAENTab(DeviceTab):
         self.auto_place_widgets(("Analog outputs", ao_widgets))
 
         self.send_button = self._create_button("Send to device", self.reprogram_CAEN)
+        self.monitor_button = self._create_button("Monitor", self.monitor_CAEN)
         # Add centered layout to center the button
         center_layout = QHBoxLayout()
         center_layout.addStretch()
         center_layout.addWidget(self.send_button)
+        center_layout.addWidget(self.monitor_button)
         center_layout.addStretch()
         self.get_tab_layout().addLayout(center_layout)
 
@@ -75,6 +77,14 @@ class CAENTab(DeviceTab):
             yield (self.queue_work(self.primary_worker, 'reprogram_CAEN', []))
         except Exception as e:
             logger.debug(f"[CAEN] Error by send work to worker(reprogram_CAEN): \t {e}")
+
+    @define_state(MODE_MANUAL, True)
+    def monitor_CAEN(self):
+        """Queue a manual send-to-device operation from the GUI."""
+        try:
+            yield (self.queue_work(self.primary_worker, 'monitor_CAEN', []))
+        except Exception as e:
+            logger.debug(f"[CAEN] Error by send work to worker(monitor_CAEN): \t {e}")
 
     def _create_button(self, text, on_click_callback):
         """Creates a styled QPushButton with consistent appearance and connects it to the given callback."""

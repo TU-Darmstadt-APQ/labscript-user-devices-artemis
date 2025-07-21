@@ -82,13 +82,13 @@ def init_CAEN(clockline):
         name='voltage_source_serial',
         parent_device=clockline,
         port='',
-        vid=0x21e1,
-        pid=0x0014,
+        # vid=0x21e1,
+        # pid=0x0014,
         baud_rate=9600
     )
-    AnalogOut(name='caen_ch_0', parent_device=voltage_source_serial, connection='CH 0', default_value=0)
-    AnalogOut(name='caen_ch_1', parent_device=voltage_source_serial, connection='CH 1', default_value=0)
-    AnalogOut(name='caen_ch_3', parent_device=voltage_source_serial, connection='CH 3', default_value=0)
+    AnalogOut(name='caen_ch_0', parent_device=voltage_source_serial, connection='CH 0', default_value=10)
+    AnalogOut(name='caen_ch_1', parent_device=voltage_source_serial, connection='CH 1', default_value=20)
+    AnalogOut(name='caen_ch_3', parent_device=voltage_source_serial, connection='CH 3', default_value=30)
 
 def init_HV_200_8(clockline):
     HV_200_8(name="power_supply_for_ST", parent_device=clockline, port='/dev/pts/4')
