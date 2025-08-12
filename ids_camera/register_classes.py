@@ -1,7 +1,7 @@
 from labscript_devices import register_classes
 
 register_classes(
-    "",
-    BLACS_tab='user_devices.???.BLACS_tabs.???',
+    "IDSCamera",
+    BLACS_tab='user_devices.ids_camera.BLACS_tabs.CameraTab',
     runviewer_parser=None,
 )

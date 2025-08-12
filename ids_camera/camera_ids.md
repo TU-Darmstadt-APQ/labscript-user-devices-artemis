@@ -2,7 +2,7 @@
 # IDS Cameras (UI-5240SE-GL-Rev.2)
 
 ## Install IDS Software Suite
-To be able to use new IDS peak, you need to have IDS Software SUite >4.95 to be installed.
+To be able to use new IDS peak, you need to have IDS Software Suite >4.95 to be installed.
 If you already have the suite and want to upgrade it, make sure that the old versions are deleted first. 
 
 NOTE: To be able to access Software Suite, you must be authorized with ids account.
@@ -90,7 +90,14 @@ new network interfaces during **initialization**.
 
 # Configure camera
 
-`sudo ip addr add 0.0.0.0/0 dev <interface>` if no camera in list in IDS Camera Manager.
+Local network adapter can no IP assigned for interface. And so no camera will be listed in IDS Camera Manager. 
+You can assign IP manually temporarily: `sudo ip addr add 0.0.0.0/0 dev <interface>` .
+Or list the interface in YAML configuration:
+```bash 
+cd /etc/netplan
+sudo nano 50-cloud-init.yaml 
+```
+
 
 # Prototyping
 
@@ -98,3 +105,25 @@ Python libraries:
 ```commandline
 pip install pyueye
 ```
+
+
+
+
+
+
+We are always at hardware trigger, if we want to take a shot:
+1. we switch to "Software" trigger, 
+2. execute triggering, 
+3. save image  
+4. go back to "Hardware" trigger.
+
+In experiment sequence `expose(t, ...)` we do the same: 
+1. we configure camera to software trigger
+2. Execute triggering
+3. Save image
+4. Go back to "Hardware" trigger
+
+While waiting for Hardware trigger: how we do this? how we know when to take a shot?
+...
+
+
