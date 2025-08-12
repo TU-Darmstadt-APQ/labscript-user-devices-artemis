@@ -14,6 +14,11 @@ PACKAGES=(
   ueye-interfaces-halcon_4.96.1.2054_amd64.deb
   ueye-tools-cli_4.96.1.2054_amd64.deb
   ueye-tools-qt5_4.96.1.2054_amd64.deb
+  ueye-drivers_4.96.1.2054_amd64.deb
+  ueye-manual-de_4.96.1.2054_amd64.deb
+  ueye-manual-en_4.96.1.2054_amd64.deb
+  ueye-manuals_4.96.1.2054_amd64.deb
+  ueye_4.96.1.2054_amd64.deb
 )
 
 MISSING_PACKAGES=()
