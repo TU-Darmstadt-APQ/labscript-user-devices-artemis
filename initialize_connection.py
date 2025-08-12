@@ -19,20 +19,31 @@ from labscript import *
 from labscriptlib.example_apparatus import *
 from labscript_devices.DummyPseudoclock.labscript_devices import DummyPseudoclock
 from labscript_devices.DummyIntermediateDevice import DummyIntermediateDevice
-from user_devices.UM.labscript_devices import UM
-from user_devices.CAEN_R8034.labscript_devices import CAEN
+# from user_devices.UM.labscript_devices import UM
+# from user_devices.CAEN_R8034.labscript_devices import CAEN
 from user_devices.BNC_575.labscript_devices import BNC_575, PulseChannel
-from user_devices.BS_cryo.models.BS_1_10 import BS_1_10
-from user_devices.BS_cryo.models.BS_1_8 import BS_1_8
-from user_devices.HV_stahl.models.HV_200_8 import HV_200_8
-from user_devices.HV_stahl.models.HV_250_8 import HV_250_8
-from user_devices.HV_stahl.models.HV_500_8 import HV_500_8
+# from user_devices.BS_cryo.models.BS_1_10 import BS_1_10
+# from user_devices.BS_cryo.models.BS_1_8 import BS_1_8
+# from user_devices.HV_stahl.models.HV_200_8 import HV_200_8
+# from user_devices.HV_stahl.models.HV_250_8 import HV_250_8
+# from user_devices.HV_stahl.models.HV_500_8 import HV_500_8
 # from labscript_devices.BS_Series.models.BS_341A_spec import BS_341A_spec
 # from labscript_devices.BS_Series.models.BS_341A import BS_341A
+from user_devices.ids_camera.labscript_devices import IDSCamera
 
 from user_devices.logger_config import logger
 
 
+def init_IDS(trigger_device):
+    IDSCamera(name='CameraIds',
+        parent_device=trigger_device,
+        connection='trigger',
+        serial_number="4104380609",
+        # exposure_time=5000,
+        # frame_rate=30,
+        # gain=1.2,
+        # roi=(0, 0, 1280, 1024),
+        camera_setting="Default")
 
 def init_UM(clockline):
     # '/dev/ttyUSB0'
@@ -44,8 +55,8 @@ def init_UM(clockline):
     AnalogOut(name="CRES_5", parent_device=UM_ST, connection='CH 2')
 
 def init_BNC_575():
-    # sudo dmesg | grep tty
-    BNC_575(name='pulse_generator', port='/dev/ttyUSB0', trigger_mode='DISabled')
+    # sudo dmesg | grep tty , '/dev/ttyUSB0'
+    BNC_575(name='pulse_generator', port='/dev/pts/1', trigger_mode='DISabled')
     PulseChannel(name='pulse_1_for_CAEN', connection='pulse 1', parent_device=pulse_generator, delay=4, width=1, mode='SINGle')
     PulseChannel(name='pulse_2_for_CC', connection='pulse 2', parent_device=pulse_generator, delay=1+2e-3, width=1, mode='SINGle')
     PulseChannel(name='pulse_3_for_MCT', connection='pulse 3', parent_device=pulse_generator, delay=2+2e-3, width=1, mode='SINGle')
