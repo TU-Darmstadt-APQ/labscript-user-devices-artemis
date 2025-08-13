@@ -48,6 +48,7 @@ class Camera:
 
         if serial_number is not None:
             self._get_device(serial_number)
+            time.sleep(2)
         else:
             raise CameraError("Cannot find device. Set camera's serial number!")
 
@@ -561,11 +562,13 @@ class TriggerWorker(threading.Thread):
             case "jpg":
                 ids_peak_ipl.ImageWriter.WriteAsJPG(self.image_name(".jpg"), image)
             case "bmp":
-                ids_peak_ipl.ImageWriter.WriteAsBMP(self.image_name(".bmp"), ipl_image)
+                ids_peak_ipl.ImageWriter.WriteAsBMP(self.image_name(".bmp"), image)
         print("Image saved!")
 
     def image_name(self, ext: str) -> str:
-        path = "/home/apq/labscript-suite/userlib/user_devices/ids_camera/images/"
+        cwd = os.getcwd()
+        print(f"PATH: {cwd}")
+        path = cwd + "/labscript-suite/userlib/user_devices/ids_camera/images/"
         today_str = dt.now().strftime("%Y-%m-%d")
         pattern = f"{today_str}_"
 
