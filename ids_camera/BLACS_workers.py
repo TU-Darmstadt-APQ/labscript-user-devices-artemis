@@ -18,9 +18,6 @@ from labscript_utils.ls_zprocess import Context
 from labscript_utils.shared_drive import path_to_local
 import json
 
-# todo: add freerun + GUI
-# buffer control in trigger initialization
-# etc.
 
 class CameraWorker(Worker):
     def init(self):
@@ -37,10 +34,10 @@ class CameraWorker(Worker):
         self.camera = Camera(device_manager, self.serial_number) # sets default cam setting
 
         # Configure triggering
-        self.camera.init_software_trigger()
-        self.trigger_mode = "Software"
-        # self.camera.init_hardware_trigger()
-        # self.trigger_mode = "Hardware"
+        # self.camera.init_software_trigger()
+        # self.trigger_mode = "Software"
+        self.camera.init_hardware_trigger()
+        self.trigger_mode = "Hardware"
 
         # Configure camera parameters
         self.set_4_parameters()
@@ -53,6 +50,7 @@ class CameraWorker(Worker):
         self.worker.start()
 
     def set_4_parameters(self):
+        print(f"4 Parameters: (roi, gain, frame_rate, exp_time) = ({self.roi, self.gain, self.frame_rate, self.exposure_time})")
         if self.roi is not None and self.roi.size == 4:
             x, y, width, height = self.roi  # np.ndarray unpacking
             self.camera.set_roi(int(x), int(y), int(width), int(height))
@@ -84,13 +82,6 @@ class CameraWorker(Worker):
            :param image: numpy.ndarray
            :param metadata:  {'date': '2025-08-07', 'time': '12:00:00', 'description': 'manual shot'}
            """
-        # Check if h5file is set (transition_to_buffered must be called first)
-        if hdf5_file is None:
-            raise RuntimeError(
-                "Cannot save image in h5file: "
-                "`self.h5_file` is not set. Make sure `transition_to_buffered()` has been called before sending to the device."
-            )
-
         name = f'{metadata["date"]}_{metadata["time"].replace(":", "-")}'
         group = hdf5_file['devices'][self.device_name]
         group.attrs['camera'] = self.device_name
@@ -100,7 +91,7 @@ class CameraWorker(Worker):
         for key, value in metadata.items():
             dataset.attrs[key] = value
 
-        print(f"Saved image with metadata under /devices/camera/images/")
+        print(f"Saved image with metadata in HDF5 under /devices/CameraIds/{name}")
 
     def shutdown(self):
         if self.camera is not None:
@@ -157,6 +148,13 @@ class CameraWorker(Worker):
                 'time': dt.now().strftime('%H:%M:%S'),
                 'description': 'manual snapshot'
             }
+
+            if self.h5_filepath is None:
+                raise LabscriptError(
+                    "Cannot save image in h5file: "
+                    "`self.h5_file` is not set. Make sure `transition_to_buffered()` has been called before sending to the device."
+                )
+
             with h5py.File(self.h5_filepath, 'r+') as f:
                 self._save_to_hdf(f, np_array, metadata)
 
@@ -164,7 +162,8 @@ class CameraWorker(Worker):
             self._send_to_gui(np_array)
 
         else:
-            print(f"Configure device on software trigger first. Current trigger mode = {self.trigger_mode}")
+            print(f"Device is currently configured with trigger mode = {self.trigger_mode}. "
+                "Switch to software trigger before continuing.")
 
     def image2qt_image(self, image) -> QImage:
         image_numpy = image.get_numpy_1D().copy()
@@ -180,6 +179,11 @@ class CameraWorker(Worker):
     def hardware_trigger_conf(self):
         self.camera.init_hardware_trigger()
         self.trigger_mode = "Hardware"
+
+    def freerun_conf(self):
+        # todo:
+        print(f"Configure to freerun")
+        self.trigger_mode = "Freerun"
 
     def rotate_left(self):
         self.camera.rotate_90_counterclockwise()
@@ -199,6 +203,10 @@ class CameraWorker(Worker):
 
     def set_exposure(self, time):
         self.camera.set_exposure_time(time)
+
+    def start_or_end_acquisition(self):
+        # todo:
+        print(f"start/end freerun")
 
 
 # --------------------contants

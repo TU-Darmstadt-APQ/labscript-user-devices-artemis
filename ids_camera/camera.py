@@ -11,6 +11,7 @@ import os
 from os.path import exists
 import h5py
 import numpy as np
+from numpy.matlib import empty
 
 from user_devices.logger_config import logger
 
@@ -96,9 +97,20 @@ class Camera:
         if selected_device_idx is None:
             raise CameraError(f"Camera with serial number '{serial_no}' not found.")
 
-        # Opens the selected device in control mode
-        self._device = self.device_manager.Devices()[selected_device_idx].OpenDevice(ids_peak.DeviceAccessType_Control)
-        self.opened = True
+        retries = 5
+        delay = 3
+        for attempt in range(retries):
+            try:
+                # Opens the selected device in control mode
+                self._device = self.device_manager.Devices()[selected_device_idx].OpenDevice(ids_peak.DeviceAccessType_Control)
+                self.opened = True
+                break
+            except ids_peak.BadAccessException as e:
+                if attempt < retries - 1:
+                    time.sleep(delay)
+                    continue
+                else:
+                    raise CameraError(f"Could not open device {serial_no}: still in use.") from e
 
         # Get device's control nodes
         self.node_map = self._device.RemoteDevice().NodeMaps()[0]
@@ -131,27 +143,24 @@ class Camera:
 
     def alloc_buffers(self):
         """ Create minimum required amount of buffers to the stream."""
-        # Buffer size
         payload_size = self.node_map.FindNode("PayloadSize").Value()
-
-        # Minimum number of required buffers
         buffer_amount = self._datastream.NumBuffersAnnouncedMinRequired()
 
-        # Allocate buffers and add them to the pool
         for _ in range(buffer_amount):
-            # Let the TL allocate the buffers
             buffer = self._datastream.AllocAndAnnounceBuffer(payload_size)
-            # Put the buffer in the pool
-            self._datastream.QueueBuffer(buffer)
-            # Add to the buffer list
             self._buffer_list.append(buffer)
 
-        print(f"{buffer_amount} allocated buffers!")
+        print(f"{buffer_amount} allocated & announced buffers!")
+
+    def queue_buffers(self):
+        for buffer in self._buffer_list:
+            # Put the buffer in the pool
+            self._datastream.QueueBuffer(buffer)
 
     def start_acquisition(self):
         """Starts acquisition.
-        1. initialize datastream --> Allocate buffers
-        2. Preallocate conversion buffers (optional)
+        1. initialize datastream --> Allocate and announce buffers if not yet
+        2. Preallocate conversion buffers (optional) if not yet
         3. Sets acquisition mode
         4. Starts Acquisition
 
@@ -163,6 +172,9 @@ class Camera:
             return True
         if self._datastream is None:
             self._init_data_stream()
+        if not self._buffer_list:
+            self.alloc_buffers()
+        self.queue_buffers()
 
         try:
             # Lock writeable nodes during acquisition
@@ -304,10 +316,14 @@ class Camera:
         if not self.opened:
             raise CameraError("Cannot set ROI while camera is closed.")
         try:
-            # Stop acquisition if running
             was_running = self.acquisition_running
-            if self.acquisition_running:
+            had_buffers = bool(self._buffer_list)
+
+            if self.acquisition_running: # Stop acquisition if running
                 self.stop_acquisition()
+                self.revoke_buffers()
+            if had_buffers:
+                self.revoke_buffers()
 
             offset_x_node = self.node_map.FindNode("OffsetX")
             offset_y_node = self.node_map.FindNode("OffsetY")
@@ -344,12 +360,12 @@ class Camera:
             width_node.SetValue(width)
             height_node.SetValue(height)
 
-            # Resume acquisition if it was running before setting new ROI
-            if was_running:
-                # Recreate buffers (according to the newly set image size)
-                self.revoke_buffers()
+            # Recreate new buffers if the acquisition was running or had buffers.
+            if was_running and had_buffers:
                 self.alloc_buffers()
+                self.queue_buffers()
 
+            if was_running:
                 self.start_acquisition()
 
         except Exception as e:
@@ -522,15 +538,15 @@ class TriggerWorker(threading.Thread):
     def run(self):
         self.running = True
 
-        print("[Worker] Waiting for trigger ...")
+        print("[Trigger Worker] Waiting for trigger ...")
         try:
             while self.running:
                 try:
                     # buffer with image?
-                    print("[Worker] Attempt to read the buffer...")
+                    print("[Trigger Worker] Attempt to read the buffer ...")
                     buffer = self.data_stream.WaitForFinishedBuffer(self.timeout_ms)
                     if buffer is None:
-                        print("[Worker] No trigger")
+                        print("[Trigger Worker] No trigger")
                         continue
 
                     # Image is transferred, get image from buffer (shallow copy) and free the buffer
@@ -540,14 +556,14 @@ class TriggerWorker(threading.Thread):
 
                     # Save image
                     if self.keep_image:
-                        print("[Worker] Attempt to save the image ...")
+                        print("[Trigger Worker] Attempt to save the image ...")
                         self.save_image(ipl_image)
 
                 except ids_peak.TimeoutException:
-                    print("[Worker] No trigger for tha last", self.timeout_ms, "ms.")
+                    print("[Trigger Worker] No trigger for tha last", self.timeout_ms, "ms.")
                     continue
         finally:
-            print("[Worker] Stop waiting for trigger ...")
+            print("[Trigger Worker] Stop waiting for trigger ...")
 
     def stop(self):
         self.running = False
@@ -567,7 +583,6 @@ class TriggerWorker(threading.Thread):
 
     def image_name(self, ext: str) -> str:
         cwd = os.getcwd()
-        print(f"PATH: {cwd}")
         path = cwd + "/labscript-suite/userlib/user_devices/ids_camera/images/"
         today_str = dt.now().strftime("%Y-%m-%d")
         pattern = f"{today_str}_"

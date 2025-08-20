@@ -5,8 +5,9 @@ from blacs.tab_base_classes import MODE_MANUAL
 # from qtutils.qt.QtWidgets import QPushButton, QSizePolicy as QSP, QHBoxLayout, QSpacerItem
 # from qtutils.qt.QtWidgets import QGraphicsView, QGraphicsScene, QWidget
 from qtutils.qt import QtWidgets, QtGui, QtCore
-from qtutils.qt.QtWidgets import QButtonGroup
-
+from qtutils.qt.QtGui import QIcon
+from qtutils.qt.QtWidgets import QButtonGroup, QApplication, QStyle, QPushButton
+from qtutils.qt.QtCore import QPropertyAnimation, QEasingCurve
 
 import os
 import json
@@ -75,8 +76,8 @@ class ImageReceiver(ZMQServer):
                 image.swapaxes(-1, -2), autoRange=False, autoLevels=False
             )
         # Update fps indicator:
-        if self.frame_rate is not None:
-            self.label_fps.setText(f"{self.frame_rate:.01f} fps")
+        # if self.frame_rate is not None:
+            # self.label_fps.setText(f"{self.frame_rate:.01f} fps")
 
         # Tell Qt to send posted events immediately to prevent a backlog of paint events
         # and other low-priority events. It seems that we cannot make our qtutils
@@ -95,58 +96,76 @@ class ImageReceiver(ZMQServer):
 class CameraTab(DeviceTab):
     def initialise_GUI(self):
         layout = self.get_tab_layout()
-        ui_filepath = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'blacs_tab.ui')
-        attributes_ui_filepath = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'attributes_dialog.ui')
-
+        ui_filepath = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'blacs_tab_new.ui')
         self.ui = UiLoader().load(ui_filepath)
-        # Create buttons group for alternative buttons
-        self.trigger_button_group = QButtonGroup()
-        self.trigger_button_group.addButton(self.ui.hardware_trigger)
-        self.trigger_button_group.addButton(self.ui.software_trigger)
 
+        # Freerun/Trigger
         self.ui.hardware_trigger.clicked.connect(self.on_hardware_trigger_clicked)
         self.ui.software_trigger.clicked.connect(self.on_software_trigger_clicked)
         self.ui.pushButton_snap.clicked.connect(self.on_snap_clicked)
-        self.ui.pushButton_attributes.clicked.connect(self.on_attributes_clicked)
-        self.ui.toolButton_nomax.clicked.connect(self.on_reset_rate_clicked)
+        self.ui.pushButton_snap.hide()  # default hardware trigger
+        self.ui.freerun.clicked.connect(self.on_freerun_clicked)
+        self.ui.acquisition.clicked.connect(self.on_acquisition_clicked)
+        self.ui.acquisition.hide()
 
-        self.attributes_dialog = UiLoader().load(attributes_ui_filepath)
-        self.attributes_dialog.setParent(self.ui.parent())
-        self.attributes_dialog.setWindowFlags(QtCore.Qt.Tool)
-        self.attributes_dialog.setWindowTitle("{} attributes".format(self.device_name))
-        self.attributes_dialog.pushButton_copy.clicked.connect(self.on_copy_clicked)
-        self.attributes_dialog.comboBox.currentIndexChanged.connect(
-            self.on_attr_visibility_level_changed
-        )
-        self.ui.doubleSpinBox_maxrate.valueChanged.connect(self.on_max_rate_changed)
+        self.ui.settings_tool.clicked.connect(self.on_settings_clicked)
 
         layout.addWidget(self.ui)
         self.image = pg.ImageView()
         self.image.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
-        self.ui.horizontalLayout.addWidget(self.image)
-        self.ui.doubleSpinBox_maxrate.hide()
-        self.ui.toolButton_nomax.hide()
-        self.ui.label_fps.hide()
-
-        # Ensure the GUI reserves space for these widgets even if they are hidden.
-        # This prevents the GUI jumping around when buttons are clicked:
-        for widget in [
-            self.ui.doubleSpinBox_maxrate,
-            self.ui.toolButton_nomax,
-        ]:
-            size_policy = widget.sizePolicy()
-            if hasattr(size_policy, 'setRetainSizeWhenHidden'):  # Qt 5.2+ only
-                size_policy.setRetainSizeWhenHidden(True)
-                widget.setSizePolicy(size_policy)
+        self.ui.verticalLayout.addWidget(self.image)
 
         # Set default values
         self.ui.hardware_trigger.setChecked(True)
 
         # Start the image receiver ZMQ server:
-        self.image_receiver = ImageReceiver(self.image, self.ui.label_fps)
+        self.image_receiver = ImageReceiver(self.image, None)
         self.acquiring = False
 
+        # Initialise settings dialog GUI
+        self.initialise_settings()
         self.supports_smart_programming(True)
+
+    def initialise_settings(self):
+        # todo:
+
+        # Icons
+        style = QApplication.style()
+        reset_icon = style.standardIcon(QStyle.SP_DialogResetButton)
+        discart_icon = style.standardIcon(QStyle.SP_DialogDiscardButton)
+        media_stop_icon = style.standardIcon(QStyle.SP_MediaStop)
+        media_start_icon = style.standardIcon(QStyle.SP_MediaPlay)
+
+        dialog_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'settings_dialog.ui')
+        self.settings_dialog = UiLoader().load(dialog_path)
+
+        # Camera Image ROI
+        self.settings_dialog.offset_y_slider
+        self.settings_dialog.offset_y
+        self.settings_dialog.offset_x_slider
+        self.settings_dialog.offset_x
+        self.settings_dialog.width_slider
+        self.settings_dialog.width
+        self.settings_dialog.height_slider
+        self.settings_dialog.height
+
+        # group_brightness_frame
+        self.settings_dialog.slider_fps
+        self.settings_dialog.spin_fps
+        self.settings_dialog.slider_exp
+        self.settings_dialog.spin_exp
+        self.settings_dialog.slider_gain
+        self.settings_dialog.spin_gain
+
+        # Group Image Transformation
+        self.settings_dialog.rotate_left_button.clicked.connect(self.on_rotate_left_clicked)
+        self.settings_dialog.rotate_right_button.clicked.connect(self.on_rotate_right_clicked)
+        self.settings_dialog.mirror_up_down.clicked.connect(self.on_mirror_ud_clicked)
+        self.settings_dialog.mirror_left_right.clicked.connect(self.on_mirror_lr_clicked)
+
+    def on_settings_clicked(self):
+        #todo:
+        return
 
     def initialise_workers(self):
         table = self.settings['connection_table']
@@ -176,9 +195,6 @@ class CameraTab(DeviceTab):
         
         self.primary_worker = "main_worker"
 
-    @define_state(MODE_MANUAL, queue_state_indefinitely=True, delete_stale_states=True)
-    def update_parameters(self):
-        return
 
     @define_state(MODE_MANUAL, queue_state_indefinitely=True, delete_stale_states=True)
     def on_snap_clicked(self, button):
@@ -187,30 +203,31 @@ class CameraTab(DeviceTab):
     @define_state(MODE_MANUAL, queue_state_indefinitely=True, delete_stale_states=True)
     def on_hardware_trigger_clicked(self, button):
         self.update_snap_button_state()
+        self.update_acquisition_button_state()
         yield (self.queue_work(self.primary_worker, 'hardware_trigger_conf'))
 
     @define_state(MODE_MANUAL, queue_state_indefinitely=True, delete_stale_states=True)
     def on_software_trigger_clicked(self, button):
         self.update_snap_button_state()
+        self.update_acquisition_button_state()
         yield (self.queue_work(self.primary_worker, 'software_trigger_conf'))
+
+    @define_state(MODE_MANUAL, queue_state_indefinitely=True, delete_stale_states=True)
+    def on_freerun_clicked(self, button):
+        self.update_snap_button_state()
+        self.update_acquisition_button_state()
+        yield (self.queue_work(self.primary_worker, 'freerun_conf'))
+
+    def update_acquisition_button_state(self):
+        enabled = self.ui.freerun.isChecked()
+        self.ui.acquisition.setEnabled(enabled)
+        self.ui.acquisition.setVisible(enabled)
 
     def update_snap_button_state(self):
         enabled = self.ui.software_trigger.isChecked()
         self.ui.pushButton_snap.setEnabled(enabled)
         self.ui.pushButton_snap.setVisible(enabled)
 
-    def on_attributes_clicked(self, button):
-        self.attributes_dialog.show()
-        self.on_attr_visibility_level_changed(None)
-
-    def on_attr_visibility_level_changed(self, value):
-        self.attributes_dialog.plainTextEdit.setPlainText("Reading attributes...")
-        self.update_attributes()
-
-    def on_copy_clicked(self, button):
-        text = self.attributes_dialog.plainTextEdit.toPlainText()
-        clipboard = QtGui.QApplication.instance().clipboard()
-        clipboard.setText(text)
 
     def on_reset_rate_clicked(self):
         self.ui.doubleSpinBox_maxrate.setValue(0)
@@ -228,5 +245,25 @@ class CameraTab(DeviceTab):
     @define_state(MODE_MANUAL, queue_state_indefinitely=True, delete_stale_states=True)
     def stop_continuous(self):
         return
+
+    @define_state(MODE_MANUAL, queue_state_indefinitely=True, delete_stale_states=True)
+    def on_acquisition_clicked(self, button):
+        yield (self.queue_work(self.primary_worker, 'start_or_end_acquisition'))
+
+    @define_state(MODE_MANUAL, queue_state_indefinitely=True, delete_stale_states=True)
+    def on_rotate_left_clicked(self):
+        yield (self.queue_work(self.primary_worker, 'rotate_left'))
+
+    @define_state(MODE_MANUAL, queue_state_indefinitely=True, delete_stale_states=True)
+    def on_rotate_right_clicked(self):
+        yield (self.queue_work(self.primary_worker, 'rotate_right'))
+
+    @define_state(MODE_MANUAL, queue_state_indefinitely=True, delete_stale_states=True)
+    def on_mirror_ud_clicked(self):
+        yield (self.queue_work(self.primary_worker, 'mirror_x'))
+
+    @define_state(MODE_MANUAL, queue_state_indefinitely=True, delete_stale_states=True)
+    def on_mirror_lr_clicked(self):
+        yield (self.queue_work(self.primary_worker, 'mirror_y'))
 
 
