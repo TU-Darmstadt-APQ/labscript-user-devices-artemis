@@ -58,15 +58,42 @@
         </widget>
        </item>
        <item>
-        <widget class="QPushButton" name="acquisition">
+        <widget class="QDoubleSpinBox" name="frame_rate_spin">
+         <property name="decimals">
+          <number>2</number>
+         </property>
+         <property name="minimum">
+          <double>0.500000000000000</double>
+         </property>
+         <property name="maximum">
+          <double>17.199999999999999</double>
+         </property>
+         <property name="value">
+          <double>5.000000000000000</double>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="start_acquisition_button">
          <property name="toolTip">
           <string>Start</string>
          </property>
          <property name="text">
-          <string>Start/Stop</string>
+          <string>Start</string>
          </property>
          <property name="icon">
           <iconset theme="media-playback-start">
+           <normaloff>.</normaloff>.</iconset>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="stop_acquisition_button">
+         <property name="text">
+          <string>Stop</string>
+         </property>
+         <property name="icon">
+          <iconset theme="media-playback-stop">
            <normaloff>.</normaloff>.</iconset>
          </property>
         </widget>

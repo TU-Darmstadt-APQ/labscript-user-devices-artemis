@@ -21,7 +21,6 @@ import json
 
 class CameraWorker(Worker):
     def init(self):
-        time.sleep(2)
         # Socket for Worker-Tab communication
         self.image_socket = Context().socket(zmq.REQ)
         self.image_socket.connect(
@@ -34,8 +33,6 @@ class CameraWorker(Worker):
         self.camera = Camera(device_manager, self.serial_number) # sets default cam setting
 
         # Configure triggering
-        # self.camera.init_software_trigger()
-        # self.trigger_mode = "Software"
         self.camera.init_hardware_trigger()
         self.trigger_mode = "Hardware"
 
@@ -46,23 +43,25 @@ class CameraWorker(Worker):
         self.image_queue = queue.Queue()
         self.camera._init_data_stream()
         self.worker = TriggerWorker(self.camera._device, self.camera.node_map, self.camera._datastream, self.image_queue, keep_image=True)
-        self.camera.start_acquisition()
+
+        self.hardware_trigger_conf()
+        self.start_acquisition()
         self.worker.start()
 
     def set_4_parameters(self):
-        print(f"4 Parameters: (roi, gain, frame_rate, exp_time) = ({self.roi, self.gain, self.frame_rate, self.exposure_time})")
+        print(f"[DEBUG] 4 Parameters: (roi, gain, frame_rate, exp_time) = ({self.roi, self.gain, self.frame_rate, self.exposure_time})")
         if self.roi is not None and self.roi.size == 4:
             x, y, width, height = self.roi  # np.ndarray unpacking
-            self.camera.set_roi(int(x), int(y), int(width), int(height))
+            self.set_roi(int(x), int(y), int(width), int(height))
 
         if self.gain is not None:
-            self.camera.set_gain(float(self.gain))
+            self.set_gain(float(self.gain))
 
         if self.frame_rate is not None:
-            self.camera.set_frame_rate(float(self.frame_rate))
+            self.set_fps(float(self.frame_rate))
 
         if self.exposure_time is not None:
-            self.camera.set_exposure_time(float(self.exposure_time))
+            self.set_exposure(float(self.exposure_time))
 
     def _send_to_gui(self, image):
         """Send the image to the GUI to display. This will block if the parent process
@@ -175,38 +174,51 @@ class CameraWorker(Worker):
     def software_trigger_conf(self):
         self.camera.init_software_trigger()
         self.trigger_mode = "Software"
+        self.worker.keep_image = True
 
     def hardware_trigger_conf(self):
         self.camera.init_hardware_trigger()
         self.trigger_mode = "Hardware"
+        self.worker.keep_image = True
 
-    def freerun_conf(self):
-        # todo:
+    def freerun_conf(self, value):
+        frame_rate = value[0]
+        self.camera.init_freerun(frame_rate)
         print(f"Configure to freerun")
         self.trigger_mode = "Freerun"
+        self.worker.keep_image = False
 
-    def rotate_left(self):
-        self.camera.rotate_90_counterclockwise()
+        # Grab image from TriggerWorker
+        try:
+            ipl_image = self.worker.image_queue.get(timeout=10)
+            # Pass image to GUI
+            np_array = self.camera.ipl2numpy(ipl_image)
+            self._send_to_gui(np_array)
+        except queue.Empty:
+            print("Timeout waiting for image from worker!")
+            return
 
-    def rotate_right(self):
-        self.camera.rotate_90_clockwise()
+    def set_fps(self, frame_rate):
+        fps = frame_rate[0]
+        self.camera.set_frame_rate(fps)
 
-    def mirror_x(self):
-        self.camera.mirror_x()
+    def set_exposure(self, exposure):
+        exp = exposure[0]
+        self.camera.set_exposure_time(exp)
 
-    def mirror_y(self):
-        self.camera.mirror_y()
+    def set_gain(self, gain):
+        g = gain[0]
+        self.camera.set_gain(g)
 
-    def set_roi(self, param):
-        x, y, width, height = param
-        self.camera.set_roi(x, y, width, height)
+    def set_roi(self, roi):
+        x, y, w, h = roi
+        self.camera.set_roi(x, y, w, h)
 
-    def set_exposure(self, time):
-        self.camera.set_exposure_time(time)
+    def start_acquisition(self):
+        self.camera.start_acquisition()
 
-    def start_or_end_acquisition(self):
-        # todo:
-        print(f"start/end freerun")
+    def stop_acquisition(self):
+        self.camera.stop_acquisition()
 
 
 # --------------------contants

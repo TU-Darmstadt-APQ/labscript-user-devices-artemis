@@ -136,6 +136,7 @@ class Camera:
             for buffer in self._datastream.AnnouncedBuffers():
                 # Remove buffer from the transport layer
                 self._datastream.RevokeBuffer(buffer)
+                print(f"[DEBUG] Revoking buffers ...")
 
             self._buffer_list = []
         except Exception as e:
@@ -156,6 +157,7 @@ class Camera:
         for buffer in self._buffer_list:
             # Put the buffer in the pool
             self._datastream.QueueBuffer(buffer)
+            print(f"[DEBUG] Buffers are queued ...")
 
     def start_acquisition(self):
         """Starts acquisition.
@@ -215,6 +217,7 @@ class Camera:
             # They remain in the announced buffer pool
             self._datastream.Flush(ids_peak.DataStreamFlushMode_DiscardAll)
             self.acquisition_running = False
+            print(f"[DEBUG] Stoping acquisition ... discard buffers ...")
 
             # Unlock parameters
             self.node_map.FindNode("TLParamsLocked").SetValue(0)
@@ -237,7 +240,7 @@ class Camera:
     ##################################################################
     ####################### Set Parameters ###########################
     ##################################################################
-    def set_exposure_time(self, time: int):
+    def set_exposure_time(self, time: float):
         """Sets the camera exposure time in microseconds.
         Precondition: The IDS peak API is initialized and a camera is opened.
         """
@@ -252,8 +255,7 @@ class Camera:
             current_time = node.Value()
 
             # Set exposure time
-            if not (min_time <= time <= max_time):
-                raise CameraError(f"Exposure time {time} µs out of bounds ({min_time},{max_time})")
+            self._check_bounds("Exposure", current_time, min_time, max_time)
             node.SetValue(time)
             print(f"Exposure time changed: {current_time} µs -> {time} µs")
 
@@ -264,6 +266,7 @@ class Camera:
             print(f"Failed to set exposure time: {e}")
 
     def set_gain(self, gain_value:float, gain_selector="All"):
+        """Master gain to all channels. The gains may be achieved by combining analog and digital gain."""
         if not self.opened:
             raise CameraError("Cannot set gain while camera is closed.")
 
@@ -283,8 +286,8 @@ class Camera:
         except Exception as e:
             raise CameraError(f"Failed to set gain: {e}")
 
-    def set_frame_rate(self, rate:float):
-        """ Values are in fps."""
+    def set_frame_rate(self, frame_rate:float):
+        """ Values are in fps. """
         if not self.opened:
             raise CameraError("Cannot set frame rate while camera is closed.")
         try:
@@ -293,8 +296,8 @@ class Camera:
             max_rate = frame_rate_node.Maximum()
             # inc_rate = frame_rate_node.Increment() if frame_rate_node.HasConstantIncrement() else None
 
-            self._check_bounds("Frame rate", rate, min_rate, max_rate)
-            frame_rate_node.SetValue(rate)
+            self._check_bounds("Frame rate", frame_rate, min_rate, max_rate)
+            frame_rate_node.SetValue(frame_rate)
 
         except Exception as e:
             print(f"Failed to set frame rate: {e}")
@@ -318,12 +321,11 @@ class Camera:
         try:
             was_running = self.acquisition_running
             had_buffers = bool(self._buffer_list)
+            print(f"buffers? {had_buffers}.\n List of buffers: {self._buffer_list}")
 
-            if self.acquisition_running: # Stop acquisition if running
+            if was_running: # Stop acquisition if running
                 self.stop_acquisition()
-                self.revoke_buffers()
-            if had_buffers:
-                self.revoke_buffers()
+            self.revoke_buffers()
 
             offset_x_node = self.node_map.FindNode("OffsetX")
             offset_y_node = self.node_map.FindNode("OffsetY")
@@ -347,6 +349,26 @@ class Camera:
             w_max, w_inc = width_node.Maximum(), width_node.Increment()
             h_max, h_inc = height_node.Maximum(), height_node.Increment()
 
+            if width % w_inc != 0:
+                corrected = (width // w_inc) * w_inc
+                print(f"[ROI] Adjust width {width} → {corrected} (step {w_inc})")
+                width = corrected
+
+            if height % h_inc != 0:
+                corrected = (height // h_inc) * h_inc
+                print(f"[ROI] Adjust height {height} → {corrected} (step {h_inc})")
+                height = corrected
+
+            if x % x_inc != 0:
+                corrected = (x // x_inc) * x_inc
+                print(f"[ROI] Adjust width {x} → {corrected} (step {x_inc})")
+                x = corrected
+
+            if y % y_inc != 0:
+                corrected = (y // y_inc) * h_inc
+                print(f"[ROI] Adjust height {y} → {corrected} (step {y_inc})")
+                y = corrected
+
             if (x + width > w_max) or (y + height > h_max):
                 raise CameraError(f"ROI: (x+width={x + width}, y+height={y + height}) exceeds limits ({w_max},{h_max}).")
             if (width % w_inc != 0) or (height % h_inc != 0):
@@ -359,11 +381,6 @@ class Camera:
             offset_y_node.SetValue(y)
             width_node.SetValue(width)
             height_node.SetValue(height)
-
-            # Recreate new buffers if the acquisition was running or had buffers.
-            if was_running and had_buffers:
-                self.alloc_buffers()
-                self.queue_buffers()
 
             if was_running:
                 self.start_acquisition()
@@ -394,6 +411,7 @@ class Camera:
             raise CameraError(f"Invalid user camera setting '{user_set}'. Valid options are: ('UserSet0', 'UserSet1')")
 
     def _check_bounds(self, name: str, value: float, min_val: float, max_val: float, increment: float = None):
+        # print(f"{name} with range ({min_val}, {max_val})")
         if not (min_val <= value <= max_val):
             raise CameraError(f"{name} value={value} out of range [{min_val}, {max_val}]")
         if increment and (value % increment != 0):
@@ -454,7 +472,7 @@ class Camera:
             was_runnning = True
             self.stop_acquisition()
 
-        # Activate the XStart trigger and configure its source to an IO line
+        # Activate the ExposureStart trigger and configure its source to an IO line
         self.node_map.FindNode("TriggerSelector").SetCurrentEntry("ExposureStart")
         self.node_map.FindNode("TriggerMode").SetCurrentEntry("On")
         self.node_map.FindNode("TriggerSource").SetCurrentEntry(trigger_source)
@@ -479,6 +497,24 @@ class Camera:
 
             except Exception as e:
                 self.make_image = False
+
+    ################################################
+    ################ Freerun #######################
+    ################################################
+    def init_freerun(self, frame_rate):
+        """
+        :param frame_rate(double): When switching between triggered and freerun mode, AcquisitionFrameRate might be reset.
+        :return:
+        """
+        self.stop_acquisition()
+
+        self.node_map.FindNode("AcquisitionMode").SetCurrentEntry("Continuous")
+        self.node_map.FindNode("TriggerSelector").SetCurrentEntry("ExposureStart")
+        self.node_map.FindNode("TriggerMode").SetCurrentEntry("Off")
+
+        self.node_map.FindNode("AcquisitionFrameRate").SetValue(float(frame_rate))
+
+        self.start_acquisition()
 
     ###################### Heplers for manual console execution through main.py ##################
     def ipl2numpy(self, image):
@@ -525,7 +561,7 @@ import numpy as np
 
 class TriggerWorker(threading.Thread):
     """A separate thread that waits for image to be transferred after the trigger."""
-    def __init__(self, device, node_map, data_stream, image_queue, keep_image=True, timeout_ms=ids_peak.Timeout.INFINITE_TIMEOUT):
+    def __init__(self, device, node_map, data_stream, image_queue, keep_image=True, timeout_ms=ids_peak.Timeout.INFINITE_TIMEOUT, mode="Hardware"):
         super().__init__(daemon=True)
         self.device = device
         self.timeout_ms = timeout_ms
@@ -534,11 +570,12 @@ class TriggerWorker(threading.Thread):
         self.data_stream = data_stream
         self.image_queue = image_queue
         self.keep_image = keep_image
+        self.mode = mode
 
     def run(self):
         self.running = True
 
-        print("[Trigger Worker] Waiting for trigger ...")
+        print(f"[Trigger Worker] Started in {self.mode} mode. Waiting for trigger / frame...")
         try:
             while self.running:
                 try:
