@@ -10,9 +10,9 @@ from datetime import datetime
 import time
 
 class UMWorker(Worker):
-    # NOTE: should stay consistent with tab bases
-    MIN_VAL = -28
-    MAX_VAL = 0
+    # NOTE: should stay consistent with min/max bases in BLACS_tabs
+    MIN_VAL = -29.4
+    MAX_VAL = 1.4
     def init(self):
         """Initialises communication with the device. When BLACS (re)starts"""
         self.min_val = self.MIN_VAL
@@ -30,16 +30,29 @@ class UMWorker(Worker):
         try:
             # Try to establish a serial connection
             self.connection = serial.Serial(self.port, self.baud_rate, timeout=1)
-            logger.info(f"[UM] UM Serial connection opened on {self.port} at {self.baud_rate} bps")
+            logger.info(f"[UM] UM Serial connection opened on {self.port} at {self.baud_rate} bps.")
 
             # Identify the device
-            self.send_to_UM("IDN\r")
+            self.send_to_UM("IDN")
             self.device_serial_number  = self.receive_from_UM()
-            print(f"Device response to IDN: {self.device_serial_number}")
+            print(f"Device response to IDN: {self.device_serial_number}. \n\tmode: [{self.mode}]")
+
+            # Device Initialization
+            self.initialisation()
             
         except Exception as e:
             raise RuntimeError(f"An error occurred during worker initialization: {e}")
 
+    def initialisation(self):
+        """After powering up the UM device, switches the Add-On channels from normal mode to
+        attenuated mode and back, and switch the primary and secondary channels from ultra high precision
+        mode to fast mode and back to ultra high precision mode. This ensures proper initialisation of internal
+        registers."""
+        self.set_attenuated_mode()
+        self.set_normal_mode()
+
+        self.change_mode("FAST")
+        self.change_mode("ULTRA")
 
     def shutdown(self):
         # Should be done when Blacs is closed
@@ -54,7 +67,7 @@ class UMWorker(Worker):
         if not getattr(self, 'restored_from_final_values', False):
             print("Front panel values (before shot):")
             for ch_name, voltage in front_panel_values.items():
-                print(f"  {ch_name}: {voltage:.2f} V")
+                print(f"  {ch_name}: {voltage:.7f} V")
 
             # Restore final values from previous shot, if available
             if self.final_values:
@@ -63,7 +76,7 @@ class UMWorker(Worker):
 
             print("\nFront panel values (after shot):")
             for ch_num, voltage in self.final_values.items():
-                print(f"  {ch_num}: {voltage:.2f} V")
+                print(f"  {ch_num}: {voltage:.7f} V")
 
             self.final_values = {}  # Empty after restoring
             self.restored_from_final_values = True
@@ -122,7 +135,7 @@ class UMWorker(Worker):
         
     def receive_from_UM(self):
         response = self.connection.read_until(b'\r').decode('utf-8').strip()
-        # logger.debug(f"[UM] Received from UM: {response}")
+        # logger.debug(f"[UM] Received from UM: {response!r}")
         return response
 
     def set_voltage(self, channel, voltage):
@@ -176,10 +189,13 @@ class UMWorker(Worker):
         return (actual_value - min_val) / (max_val - min_val)
 
     def change_mode(self, selected_mode):
-        # todo: send command to device
         if isinstance(selected_mode, list):
             selected_mode = selected_mode[0]
-            print(f"MODE CHANGED: [{selected_mode}]")
+            cmd = f"{self.device_serial_number} {selected_mode} LV"
+            self.send_to_UM(cmd)
+            response = self.receive_from_UM()
+            logger.debug(f"[UM] Sent: {cmd} \t Received: {response}")
+            print(f"\tMODE CHANGED: [{selected_mode}]")
             self.mode = selected_mode
 
     def _extract_channel_name(self, channel: str) -> str:
@@ -199,7 +215,6 @@ class UMWorker(Worker):
 
     def _map_channel_to_number(self, mode, channel):
         """
-        channel may have forms like "CH A'", "A"
             CHXX:
                 01 - A', fast mode      19 - A', precision mode
                 03 - B'                 20 - B'
@@ -244,8 +259,37 @@ class UMWorker(Worker):
         logger.info(f"[UM] Setting from (manual mode)")
         for channel, voltage in self.front_panel_values.items():
             self.set_voltage(channel, voltage)
-            print(f"→ {channel}: {voltage:.2f} V")
+            print(f"→ {channel}: {voltage:.7f} V")
 
+    def set_shut_mode(self, kwargs=None):
+        """In the “Shut down” mode the add-on channels are switched off,
+        reducing the residual noise, which might appear otherwise at the outputs.
+        Only 1-8 channels."""
+        cmd = f"{self.device_serial_number} SHUT"
+        self.send_to_UM(cmd)
+        response = self.receive_from_UM()
+        logger.debug(f"[UM] Sent: {cmd} \t Received: {response}")
+        print(f"\tmode: [SHUT]")
+
+    def set_attenuated_mode(self, kwargs=None):
+        """In the “Attenuated mode” the voltage range of the Add-on
+        channels is reduced by a factor of approx. 100 and such is
+        also the absolute resolution. This allows for applying small
+        voltages in the Millivolt range over a smaller span.
+        Only 1-8 channels."""
+        cmd = f"{self.device_serial_number} ATT"
+        self.send_to_UM(cmd)
+        response = self.receive_from_UM()
+        logger.debug(f"[UM] Sent: {cmd} \t Received: {response}")
+        print(f"\tmode: [ATTENUATED]")
+
+    def set_normal_mode(self, kwargs=None):
+        """Escapes from the attenuation and shutdown modes."""
+        cmd = f"{self.device_serial_number} NORM"
+        self.send_to_UM(cmd)
+        response = self.receive_from_UM()
+        logger.debug(f"[UM] Sent: {cmd} \t Received: {response}")
+        print(f"\tmode: [NORM]")
 
 
 # --------------------contants

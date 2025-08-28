@@ -2,7 +2,7 @@ from blacs.tab_base_classes import Worker, define_state
 from blacs.device_base_class import DeviceTab
 from qtutils import UiLoader
 from user_devices.logger_config import logger
-from qtutils.qt.QtWidgets import QRadioButton, QSizePolicy, QVBoxLayout, QButtonGroup, QHBoxLayout, QSpacerItem, QLabel, QPushButton, QSizePolicy as QSP
+from qtutils.qt.QtWidgets import QRadioButton, QSizePolicy, QVBoxLayout, QButtonGroup, QHBoxLayout, QSpacerItem, QLabel, QPushButton, QSizePolicy as QSP, QDial, QGridLayout
 from qtutils.qt.QtCore import Qt
 from blacs.tab_base_classes import MODE_MANUAL
 
@@ -13,11 +13,11 @@ class UMTab(DeviceTab):
 
         # Define capabilities 
         self.base_unit = 'V'
-        self.base_min = -28
-        self.base_max = 0
+        self.base_min = -29.4
+        self.base_max = 1.4
         self.base_step = 1
-        self.base_decimals_ultra = 7
-        self.base_decimals_add_on = 4
+        self.base_decimals_ultra = 6
+        self.base_decimals_add_on = 3
         self.num_add_ons = 10
 
         ultra_precision_channels = {
@@ -59,14 +59,19 @@ class UMTab(DeviceTab):
         self.create_analog_outputs(add_on_channels)
         
         # Create widgets for output objects
-        ultra_widgets = self.create_analog_widgets(ultra_precision_channels)
-        add_on_widgets = self.create_analog_widgets(add_on_channels)
-        self.auto_place_widgets(("ultra high precision channels", ultra_widgets))
-        self.auto_place_widgets(("add on channels", add_on_widgets))
+        self.ultra_widgets = self.create_analog_widgets(ultra_precision_channels)
+        self.add_on_widgets = self.create_analog_widgets(add_on_channels)
+        self.auto_place_widgets(("ultra high precision channels", self.ultra_widgets))
+        self.auto_place_widgets(("add on channels", self.add_on_widgets))
 
-        # Create radio button for modes
-        self.create_mode_button(self.mode_changed)
+        # Create additional GUI widgets
+        self.grid = QGridLayout()
+        self.get_tab_layout().addLayout(self.grid)
+
+        self.create_mode_group(self.mode_changed)
         self.create_send_button(self.send_to_device)
+        self.create_add_on_mode_dial()
+
         # Set the capabilities of this device
         self.supports_remote_value_check(False)
         self.supports_smart_programming(False) # see at 3.3.19, 5.3 (docs) 
@@ -88,7 +93,7 @@ class UMTab(DeviceTab):
             )
         self.primary_worker = "main_worker"
 
-    def create_mode_button(self, on_click_callback):
+    def create_mode_group(self, on_click_callback):
         self.fast_button = QRadioButton("FAST")
         self.ultra_button = QRadioButton("ULTRA")
 
@@ -105,20 +110,17 @@ class UMTab(DeviceTab):
         # Connect signal to function
         self.button_group.buttonClicked.connect(on_click_callback)
 
+        # Set initial default mode to ULTRA
+        self.ultra_button.setChecked(True)
+        self.label.setText("Current mode: ULTRA")
+
         # Vertical layout for buttons and label (stacked vertically)
         vbox = QVBoxLayout()
         vbox.addWidget(self.label, alignment=Qt.AlignHCenter)
         vbox.addWidget(self.fast_button, alignment=Qt.AlignHCenter)
         vbox.addWidget(self.ultra_button, alignment=Qt.AlignHCenter)
 
-        # Horizontal layout to center the vertical layout
-        hbox = QHBoxLayout()
-        hbox.addStretch()
-        hbox.addLayout(vbox)
-        hbox.addStretch()
-
-        # Add the centered layout to the main device tab layout
-        self.get_tab_layout().addLayout(hbox)
+        self.grid.addLayout(vbox, 0, 0, alignment=Qt.AlignCenter)
 
     def create_send_button(self, on_click_callback):
         """Creates a styled QPushButton with consistent appearance and connects it to the given callback."""
@@ -142,14 +144,33 @@ class UMTab(DeviceTab):
                    }
                """)
         button.clicked.connect(lambda: on_click_callback())
-        logger.debug(f"[CAEN] Button {text} is created")
+        logger.debug(f"[UM] Button {text} is created")
+        self.grid.addWidget(button, 0, 1, alignment=Qt.AlignHCenter)
 
-        # Add centered layout to center the button
-        center_layout = QHBoxLayout()
-        center_layout.addStretch()
-        center_layout.addWidget(button)
-        center_layout.addStretch()
-        self.get_tab_layout().addLayout(center_layout)
+    def create_add_on_mode_dial(self):
+        self.dial = QDial()
+        self.dial.setMinimum(0)
+        self.dial.setMaximum(2)
+        self.dial.setValue(0)
+        self.dial.setNotchesVisible(True)
+        self.dial.valueChanged.connect(self.on_dial_changed)
+        self.get_tab_layout().addWidget(self.dial)
+
+        # Add labels
+        labels = ["NORMAL |", "SHUT |", f"ATTENUATED \n1/100"]
+        label_layout = QHBoxLayout()
+        label_layout.setSpacing(1)
+        for l in labels:
+            lbl = QLabel(l)
+            lbl.setAlignment(Qt.AlignHCenter)
+            label_layout.addWidget(lbl)
+
+        # Combine Dial and Labels
+        dial_block = QVBoxLayout()
+        dial_block.addWidget(self.dial, alignment=Qt.AlignHCenter)
+        dial_block.addLayout(label_layout)
+
+        self.grid.addLayout(dial_block, 0, 2, alignment=Qt.AlignCenter)
 
     @define_state(MODE_MANUAL, True)
     def mode_changed(self, button):
@@ -166,3 +187,39 @@ class UMTab(DeviceTab):
             yield (self.queue_work(self.primary_worker, 'reprogram_UM', []))
         except Exception as e:
             logger.debug(f"[UM] Error by send work to worker(reprogram_UM): \t {e}")
+
+    def on_dial_changed(self, value):
+        if value == 0:
+            self.set_normal_mode()
+        elif value == 1:
+            self.set_shut_mode()
+        elif value == 2:
+            self.set_attenuated_mode()
+
+    @define_state(MODE_MANUAL, True)
+    def set_shut_mode(self):
+        try:
+            yield (self.queue_work(self.primary_worker, 'set_shut_mode', []))
+            for widget in self.add_on_widgets.values():
+                widget.setEnabled(False)
+        except Exception as e:
+            logger.debug(f"[UM] Error by send work to worker(set_shut_mode): \t {e}")
+
+    @define_state(MODE_MANUAL, True)
+    def set_attenuated_mode(self):
+        try:
+            yield (self.queue_work(self.primary_worker, 'set_attenuated_mode', []))
+            for widget in self.add_on_widgets.values():
+                widget.setEnabled(True)
+        except Exception as e:
+            logger.debug(f"[UM] Error by send work to worker(set_attenuated_mode): \t {e}")
+
+    @define_state(MODE_MANUAL, True)
+    def set_normal_mode(self):
+        try:
+            yield (self.queue_work(self.primary_worker, 'set_normal_mode', []))
+            for widget in self.add_on_widgets.values():
+                widget.setEnabled(True)
+        except Exception as e:
+            logger.debug(f"[UM] Error by send work to worker(set_normal_mode): \t {e}")
+
