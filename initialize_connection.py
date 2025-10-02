@@ -19,8 +19,8 @@ from labscript import *
 from labscriptlib.example_apparatus import *
 from labscript_devices.DummyPseudoclock.labscript_devices import DummyPseudoclock
 from labscript_devices.DummyIntermediateDevice import DummyIntermediateDevice
-# from user_devices.UM.labscript_devices import UM
-# from user_devices.CAEN_R8034.labscript_devices import CAEN
+from user_devices.UM.labscript_devices import UM
+from user_devices.CAEN_R8034.labscript_devices import CAEN
 from user_devices.BNC_575.labscript_devices import BNC_575, PulseChannel
 # from user_devices.BS_cryo.models.BS_1_10 import BS_1_10
 # from user_devices.BS_cryo.models.BS_1_8 import BS_1_8
@@ -30,9 +30,21 @@ from user_devices.BNC_575.labscript_devices import BNC_575, PulseChannel
 # from labscript_devices.BS_Series.models.BS_341A_spec import BS_341A_spec
 # from labscript_devices.BS_Series.models.BS_341A import BS_341A
 from user_devices.ids_camera.labscript_devices import IDSCamera
+from user_devices.PicoScope4000A.labscript_devices import PicoScope4000A, PicoAnalogIn
 
 from user_devices.logger_config import logger
 
+def init_picoscope():
+    picoscope = PicoScope4000A(name='picoscope',
+                   serial_number='0000000',
+                   )
+    # 8 channels
+    # name, parent_device, connection, enabled=[0,1], coupling=['ac', 'dc'], range=[0.1..200], analog_offset=float
+    PicoAnalogIn(name='conn1', parent_device=picoscope, connection='channel_A', enabled=1, coupling='ac', range=50, analog_offset=0.0)
+    PicoAnalogIn(name='conn2', parent_device=picoscope, connection='channel_B', enabled=1, coupling='dc', range=50, analog_offset=0.0)
+    PicoAnalogIn(name='conn3', parent_device=picoscope, connection='channel_C', enabled=1, coupling='ac', range=24, analog_offset=0.0)
+    PicoAnalogIn(name='conn4', parent_device=picoscope, connection='channel_D', enabled=0, coupling='ac', range=50, analog_offset=0.0)
+    PicoAnalogIn(name='conn5', parent_device=picoscope, connection='channel_E', enabled=0, coupling='ac', range=50, analog_offset=0.0)
 
 def init_IDS(trigger_device):
     IDSCamera(name='CameraIds',
@@ -48,15 +60,17 @@ def init_IDS(trigger_device):
 def init_UM(clockline):
     # '/dev/ttyUSB0'
     UM(name='UM_ST', parent_device=clockline, port='/dev/ttyUSB0', baud_rate=9600)
-    AnalogOut(name="CRES_1", parent_device=UM_ST, connection='CH A')
-    AnalogOut(name="CRES_2", parent_device=UM_ST, connection='CH B')
-    AnalogOut(name="CRES_3", parent_device=UM_ST, connection='CH C')
+    # Possible connections: "CH A'", "CH B'", "CH C'", "CH [1..10]"
+    AnalogOut(name="CRES_1", parent_device=UM_ST, connection="CH A'")
+    AnalogOut(name="CRES_2", parent_device=UM_ST, connection="CH B'")
+    AnalogOut(name="CRES_3", parent_device=UM_ST, connection="CH C'")
     AnalogOut(name="CRES_4", parent_device=UM_ST, connection='CH 1')
     AnalogOut(name="CRES_5", parent_device=UM_ST, connection='CH 2')
 
 def init_BNC_575():
     # sudo dmesg | grep tty , '/dev/ttyUSB0'
     BNC_575(name='pulse_generator', port='/dev/pts/1', trigger_mode='DISabled')
+    # Possible connections: "pulse [1..]"
     PulseChannel(name='pulse_1_for_CAEN', connection='pulse 1', parent_device=pulse_generator, delay=4, width=1, mode='SINGle')
     PulseChannel(name='pulse_2_for_CC', connection='pulse 2', parent_device=pulse_generator, delay=1+2e-3, width=1, mode='SINGle')
     PulseChannel(name='pulse_3_for_MCT', connection='pulse 3', parent_device=pulse_generator, delay=2+2e-3, width=1, mode='SINGle')
