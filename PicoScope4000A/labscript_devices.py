@@ -54,7 +54,6 @@ class PicoScope4000A(Device):
     def __init__(self, name, serial_number=None, channels_number=8, **kwargs):
         super().__init__(name, parent_device=None, connection='None', **kwargs)
         self.BLACS_connection = serial_number # i dont know but why not
-        logger.debug(f"INITIALIze PICOSCOPE LABSCRIPT DEVICE")
         self.serial_number = serial_number # if None, opens the first scope found
         self.channels_number = channels_number
 
@@ -260,6 +259,7 @@ class PicoScope4000A(Device):
             if isinstance(device, PicoAnalogIn):
                 cfg = device.channel_config
                 input_configs_table[i]['channel'] = cfg['channel']
+                input_configs_table[i]['name'] = cfg['name']
                 input_configs_table[i]['enabled'] = cfg['enabled']
                 input_configs_table[i]['coupling'] = cfg['coupling']
                 input_configs_table[i]['range'] = cfg['range']

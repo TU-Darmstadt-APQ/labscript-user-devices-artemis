@@ -15,7 +15,6 @@ class PicoScopeTab(DeviceTab):
         connection_table = self.settings['connection_table']
         device = connection_table.find_by_name(self.device_name)
         properties = device.properties
-        logger.info(f"[PicoScope] properties: {properties}")
 
         layout = self.get_tab_layout()
         self.tabs = QTabWidget()
@@ -23,8 +22,6 @@ class PicoScopeTab(DeviceTab):
 
         # 1. Channels
         channels_configs = [input.properties['channel_config'] for input in device.child_list.values()]
-
-        logger.debug(f"Channels configs = Properties: {channels_configs}" )
 
         channels_tab = QWidget()
         channels_layout = QVBoxLayout(channels_tab)
@@ -51,7 +48,6 @@ class PicoScopeTab(DeviceTab):
 
         trigger_properties = properties.get("trigger_properties_config", [])
         if trigger_properties:
-            logger.debug(f"Trigger Properties: {trigger_properties}")
             trigger_layout.addWidget(self.make_table(
                 "Trigger Properties",
                 ["Source", "Threshold Upper", "Threshold Lower", "Upper Hysteresis", "Lower Hysteresis","Threshold Mode"],
