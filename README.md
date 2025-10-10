@@ -83,7 +83,7 @@ python3 emulateSerPort.py
 4. Close the simulation when no longer needed (e.g. `Ctrl+C`): It will close the simulated serial port. 
 
 ---
-## Knowledge gathering
+## good-to-know
 #### HDF files
  The HDF file begins life containing only experiment parameters. As it is passed between components of the labscript suite, 
  the file grows to contain the hardware instructions, acquired data, and analysis results. 
@@ -95,27 +95,6 @@ python3 emulateSerPort.py
 - Device: parent class for all devices (labscript.base)
 - IntermediateDevice: base class for all devices that are to be clocked 
 by a pseudoclock (labscript.core)
-
-#### Core Functions
-- generate_code(): should process any instructions the user has added in their 
-labscript code, converting them to the low-level instructions that need to be 
-- programmed into the device, and then save those instructions to the shot file.
-
-#### Technical Tips
-- BLACS device controls should be labeled using both the hardware I/O port name 
-and the user-defined name from the Labscript connection table.
-
----
-## Other user_devices
-
-- https://github.com/TU-Darmstadt-APQ/QUIPS_C-Userlib/blob/master/user_devices/Due_AD9910/blacs_tabs.py
-- https://github.com/fretchen/synqs_devices/blob/master/SynthHDDevice/blacs_tabs.py
-- https://github.com/zakv/RbLab_user_devices/blob/master/elliptec/blacs_workers.py
-- https://github.com/naqslab/naqslab_devices/blob/master/README.md
-- https://github.com/fretchen/synqs_devices/blob/master/yun_temp/blacs_tabs.py
-- https://gitlab.tuwien.ac.at/quantuminfo/experiment-control/labscript-userlib/leolab_devices
-
-
 
 ## Troubleshooting
 ### TypeError: Argument 'linger' has incorrect type
