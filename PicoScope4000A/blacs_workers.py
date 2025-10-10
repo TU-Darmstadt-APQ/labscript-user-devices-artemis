@@ -13,31 +13,31 @@ from picosdk.ps4000a import ps4000a as ps
 from picosdk.functions import adc2mV, assert_pico_ok, mV2adc
 from picosdk.constants import PICO_STATUS
 
-
 class PicoScopeWorker(Worker):
 
     def init(self):
 
-        # convert serial number to bytes, or None if using first device
-        if hasattr(self, "serial_number") and self.serial_number:
-            self.serial = self.serial_number.encode()
-        else:
-            self.serial = None  # will open the first picoscope found
-
-        self.pico = PicoScope(self.serial, self.no_inputs)
-
-        self.active_mode = None
-        self.block_config = None
-        self.rapid_config = None
-        self.stream_config = None
+        self.pico = PicoScope(self.serial_number)
 
         self.h5_file = None
         self.device_name = None
+        self.total_samples = 0
+
+        self._stop_threads = None
 
     def shutdown(self):
         self._stop_threads = True
+        self.pico._stop_threads = True
+
         self.pico.stop_unit()
         self.pico.close_unit()
+
+        # join threads
+        if getattr(self.pico, "fetcher_thread", None) is not None:
+            self.fetcher_thread.join(timeout=1.0)
+        if getattr(self, "writer_thread", None) is not None:
+            self.writer_thread.join(timeout=2.0)
+
 
     def program_manual(self, front_panel_values):
         pass
@@ -51,138 +51,128 @@ class PicoScopeWorker(Worker):
         self.h5_file = h5_file
         self.device_name = device_name
 
-        with h5py.File(h5_file, "r") as f:
-            group = f[f"/devices/{device_name}"]
+        # Configure channels
+        for ch in self.channels_configs:
+            self.pico.set_channel(ch["channel"], ch["coupling"], ch["range"], ch["enabled"], ch["analog_offset"])
 
-            # 0. Configure channels
-            channel_configs = group["channel_configs"][:]
-            for ch in channel_configs:
-                self.pico.set_channel(ch["channel"], ch["coupling"], ch["range"], ch["enabled"], ch["offset"])
+        # Configure Trigger
+        if self.simple_trigger:
+            self.pico.set_simple_edge_trigger(self.simple_trigger["enabled"],
+                                              self.simple_trigger["source"],
+                                              self.simple_trigger["threshold"],
+                                              self.simple_trigger["direction"],
+                                              self.simple_trigger["delay"],
+                                              self.simple_trigger["autoTrigger_ms"])
 
-            # 1. Configure Trigger (if defined)
-            trig_group = group["triggers"]
+        if self.trigger_conditions:
+            for cond in self.trigger_conditions:
+                self.pico.set_trigger_conditions(cond["sources"], cond["info"])
 
-            if "simple_trigger" in trig_group:
-                simple_trigger = trig_group["simple_trigger"][:]
-                self.pico.set_simple_edge_trigger(simple_trigger["enabled"],
-                                                  simple_trigger["source"],
-                                                  simple_trigger["threshold"],
-                                                  simple_trigger["direction"],
-                                                  simple_trigger["delay"],
-                                                  simple_trigger["autoTrigger_ms"])
+        if self.trigger_directions:
+            self.pico.set_trigger_channel_directions(self.trigger_directions)
 
-            if "trigger_conditions" in trig_group:
-                trigger_conditions = json.loads(trig_group["trigger_conditions"][()].decode())
-                for cond in trigger_conditions:# todo: if pulse width, add PulseWidthQualifierConditions/Properties
-                    self.pico.set_trigger_conditions(cond["sources"], cond["info"])
+        if self.trigger_properties:
+            self.pico.set_trigger_channel_properties(self.trigger_properties)
 
-            if "trigger_directions" in trig_group:
-                trigger_directions = trig_group["trigger_directions"][:]
-                self.pico.set_trigger_channel_directions(trigger_directions)
+        if self.trigger_delay:
+            self.pico.set_trigger_delay(self.trigger_delay["delay"])
 
-            if "trigger_properties" in trig_group:
-                trigger_properties = trig_group["trigger_properties"][:]
-                self.pico.set_trigger_channel_properties(trigger_properties)
+        print(f"[DEBUG] the pico status = {self.pico.status}")
+        # Configure active mode
+        if self.active_mode == "stream" and self.stream_config:
+            self.pico.run_stream(
+                self.stream_config["sampleInterval"],
+                self.stream_config["noPreTriggerSamples"],
+                self.stream_config["noPostTriggerSamples"],
+                self.stream_config["autoStop"],
+                self.stream_config["downSampleRatio"],
+                self.stream_config["downSampleRatioMode"],
+            )
 
-            if "trigger_delay" in trig_group:
-                trigger_delay = trig_group["trigger_delay"][:][0]
-                self.pico.set_trigger_delay(trigger_delay)
+        if self.active_mode == "block" and self.block_config:
+            self.pico.run_block(
+                self.block_config["noPreTriggerSamples"],
+                self.block_config["noPostTriggerSamples"],
+                self.block_config["sampleInterval"]
+            )
 
-            # 2. Configure active mode
-            self.active_mode = group.attrs["active_mode"]
+        if self.active_mode == "rapid" and self.rapid_config:
+            #todo:
+            self.pico.run_rapid()
 
-            # Save other modes configuration for future use in manual mode
-            if "block_config" in group:
-                self.block_config = json.loads(group["block_config"][()].decode())
-            if "rapid_block_config" in group:
-                self.rapid_config = json.loads(group["rapid_block_config"][()].decode())
-            if "stream_config" in group:
-                self.stream_config = json.loads(group["stream_config"][()].decode())
+        # Configure Sig gen
+        if self.siggen_config:
+            self.pico.gen_signal(
+                self.siggen_config["offsetVoltage"],
+                self.siggen_config["pkToPk"],
+                self.siggen_config["wavetype"],
+                self.siggen_config["startFrequency"],
+                self.siggen_config["stopFrequency"],
+                self.siggen_config["increment"],
+                self.siggen_config["dwelltime"],
+                self.siggen_config["sweeptype"],
+                self.siggen_config["operation"],
+                self.siggen_config["shots"],
+                self.siggen_config["sweeps"],
+                self.siggen_config["triggertype"],
+                self.siggen_config["triggersource"],
+                self.siggen_config["extInThreshold"],
+            )
 
+        # Create dataset for streaming samples:
+        rows = self.pico.total_samples
+        cols = sum(self.pico.enabled_channels)
 
-            if self.active_mode == "stream" and self.stream_config:
-                self.pico.run_stream(
-                    self.stream_config["sampleInterval_ns"],
-                    self.stream_config["noPreTriggerSamples"],
-                    self.stream_config["noPostTriggerSamples"],
-                    self.stream_config["autoStop"],
-                    self.stream_config["downSampleRatio"],
-                    self.stream_config["downSampleRatioMode"],
-                )
-            if self.active_mode == "block" and self.block_config:
-                self.pico.run_block(
-                    self.block_config["noPreTriggerSamples"],
-                    self.block_config["noPostTriggerSamples"],
-                    self.block_config["sampleInterval_ns"]
-                )
-            if self.active_mode == "rapid" and self.rapid_config:
-                self.pico.run_rapid()
+        with h5py.File(self.h5_file, "r+") as f:
+            group = f[f"/devices/{self.device_name}"]
+            if "StreamSamples" in group:
+                del(group["StreamSamples"])
 
-            # 2. Configure Sig gen
-            if "siggen_config" in group:
-                siggen_config = json.loads(group["siggen_config"][()].decode())
-                self.pico.gen_signal(
-                    siggen_config["offsetVoltage"],
-                    siggen_config["pkToPk"],
-                    siggen_config["wavetype"],
-                    siggen_config["startFrequency"],
-                    siggen_config["stopFrequency"],
-                    siggen_config["increment"],
-                    siggen_config["dwelltime"],
-                    siggen_config["sweeptype"],
-                    siggen_config["operation"],
-                    siggen_config["shots"],
-                    siggen_config["sweeps"],
-                    siggen_config["triggertype"],
-                    siggen_config["triggersource"],
-                    siggen_config["extInThreshold"],
-                )
+            ds = group.create_dataset("StreamSamples", shape=(rows, cols), dtype=np.float32)
+            ds.attrs["channel_names"] = [f"CH{ch}" for ch, enabled in enumerate(self.pico.enabled_channels) if enabled == 1]
+
+        self.writer = threading.Thread(target=self.h5_writer_thread, daemon=True)
+        self.writer.start()
 
         rich_print(f"---------- End transition to Buffered: ----------", color=BLUE)
         return
 
     def transition_to_manual(self):
-        def writing_thread():
-            while not self.pico.fetch_ready and not self._stop_threads:
-                time.sleep(1)
+        rich_print(f"---------- Begin transition to Manual: ----------", color=BLUE)
 
-            # Save fetched data to hdf5 file
-            with h5py.File(self.h5_file, "r+") as f:
-                group = f[f"/devices/{self.device_name}"]
-
-                # Collect buffers into matrix, columns=channels, rows=samples
-                channel_names = list(self.pico.complete_buffers.keys())
-                data = np.vstack([self.pico.adc2mv(ch, self.pico.complete_buffers[ch]) for ch in channel_names])
-
-                group.create_dataset(
-                    name="stream_sampling",
-                    data=data,
-                    dtype=np.float32,
-                    compression="gzip"
-                )
-                group["stream_sampling"].attrs["channels"] = json.dumps(channel_names)
-
-                times = np.linspace(0, (self.pico.total_samples - 1) * self.pico.actual_sample_interval, self.pico.total_samples)
-                for buff in self.self.pico.complete_buffers.values():
-                    plt.plot(times, buff)
-                plt.show()
-
-                if self.pico.complete_max_buffers != {}:
-                    # Collect buffers into matrix, columns=channels, rows=samples
-                    channel_names = list(self.pico.complete_max_buffers.keys())
-                    data = np.vstack([self.pico.complete_max_buffers[ch] for ch in channel_names])
-
-                    group.create_dataset(
-                        name="stream_sampling_max",
-                        data=data,
-                        dtype=np.float32,
-                        compression="gzip"
-                    )
-                    group["stream_sampling_max"].attrs["channels"] = json.dumps(channel_names)
-
-        writer = threading.Thread(target=writing_thread, daemon=True)
-        writer.start()
+        rich_print(f"---------- End transition to Manual: ----------", color=BLUE)
         return True
+
+    def h5_writer_thread(self):
+        """Get from queue 2d data block. Transform ADC counts to mV. Save new data in hdf5file."""
+        with h5py.File(self.h5_file, "r+") as f:
+            ds = f[f"/devices/{self.device_name}/StreamSamples"]
+
+            while not self._stop_threads: # run till all samples collected
+                try:
+                    start, data2d = self.pico.h5_queue.get(timeout=0.5)
+                except queue.Empty:
+                    continue
+
+                n = data2d.shape[0] # number of samples
+                end = start + n # the last sample number
+                if end > ds.shape[0]:
+                    print(f"[WARNING] Too many samples, truncating... start={start}, requested_end={end}, ds_rows={ds.shape[0]}")
+                    n = ds.shape[0] - start # number of samples to save, the rest get lost
+                    if n <= 0:
+                        continue
+                    data2d = data2d[:n, :]
+                    end = start + n
+
+                # Save data
+                data_mV = self.pico.adc2mv(data2d)
+                ds[start:end, :] = data_mV.astype(ds.dtype)
+                # ds[start:end, :] = data2d.astype(ds.dtype)
+
+
+                if end == self.pico.total_samples: break
+            print(f"[DEBUG] triggeredAt = {self.pico.triggered_at}")
+            f.flush()
 
     def abort_transition_to_buffered(self):
         return self.transition_to_manual()
@@ -190,42 +180,39 @@ class PicoScopeWorker(Worker):
     def abort_buffered(self):
         return self.abort_transition_to_buffered()
 
-
 BLUE = '#66D9EF'
 
 class PicoScope:
 
-    def __init__(self, serial_number, no_inputs):
+    def __init__(self, serial_number):
         self.status = {}
         self.chandle = ctypes.c_int16()
 
-        self.enabled_channels = []
+        self.enabled_channels = [0,0,0,0,0,0,0,0] # store channels status
         self.channel_ranges = {} # store each channel [0..7] vRange [0..13]
 
         self.buffers = {}
         self.max_buffers = {} # if downsample mode is 'aggregate'
         self.complete_buffers = {}
         self.complete_max_buffers = {}
-        self.max_samples = None
-        self.total_samples = None
-        self.no_buffers = None
+        self.total_samples = 0
 
         self.auto_stop_outer = None
         self.was_called_back = None
+        self.stop_h5_writer = False
 
         self.fetch_ready = False
         self._stop_threads = False
 
         # Open device
         self.open_unit(serial_number)
-        self.device_info = self._get_unit_info()
-        print(f"[PicoScope] INFO: {self.device_info}")
 
-        self.resolution = self._get_device_resolution()
-        self.maxADC = (2 ** (self.resolution - 1)) - 1  # symmetric
+        self.maxADC = ctypes.c_int32(32767)
         self.actual_sample_interval = None
         self.next_sample = 0
         self.auto_stop = False
+
+        self.h5_queue = queue.Queue()
 
 
     #######################################################################
@@ -233,15 +220,14 @@ class PicoScope:
     #######################################################################
 
     def open_unit(self, serial_number):
-        no_scopes, serials, _ = self._enumerate_units_connected()
-        print(f"All connected Picoscopes: {no_scopes} with serial numbers: {serials}")
-
-        self.status["openUnit"] = ps.OpenUnit(ctypes.byref(self.chandle), serial_number)
+        serial_number = serial_number.encode()
+        self.status["openUnit"] = ps.ps4000aOpenUnit(ctypes.byref(self.chandle), serial_number)
         assert_pico_ok(self.status["openUnit"])
         print("[PicoScope] PicoScope connected, chandle:", self.chandle.value)
 
     def close_unit(self):
         print(f"[PicoScope] {self.status}")
+        self._stop_threads = True
         self.status["close"] = ps.ps4000aCloseUnit(self.chandle)
 
     def stop_unit(self):
@@ -256,17 +242,6 @@ class PicoScope:
         self.status["GetDeviceResolution"] = ps.ps4000aGetDeviceResolution(self.chandle, ctypes.byref(resolution))
         assert_pico_ok(self.status["GetDeviceResolution"])
         return resolution.value
-
-    def _enumerate_units_connected(self):
-        count = ctypes.c_int16()
-        serials = ctypes.c_int8()
-        serialLth = ctypes.c_int16()
-
-        self.status["enumerateUnits"] = ps.ps4000aEnumerateUnits(ctypes.byref(count), ctypes.byref(serials),
-                                                                 ctypes.byref(serialLth))
-        assert_pico_ok(self.status["enumerateUnits"])
-
-        return count.value, serials.value, serialLth.value
 
     def _get_analogue_offset_range(self, ch_range: int, coupling: int):
         """ Get the maximal and minimal analogue offset (dc) for the given range on channel.
@@ -284,37 +259,17 @@ class PicoScope:
         assert_pico_ok(self.status["getAnalogueOffset"])
         return max_v.value, min_v.value
 
-    def _get_unit_info(self):
-        """Fetch device info (batch + serial, variant, etc.)."""
-        string_buffer_len = 64
-        string_buffer = ctypes.create_string_buffer(string_buffer_len)
-        required = ctypes.c_int16()
-
-        self.status["getUnitInfo"] = ps.ps4000aGetUnitInfo(
-            self.chandle,
-            string_buffer,
-            string_buffer_len,
-            ctypes.byref(required),
-            ps.PICO_INFO["PICO_BATCH_AND_SERIAL"]
-        )
-        assert_pico_ok(self.status["getUnitInfo"])
-        return string_buffer.value.decode("utf-8")
-
     def _find_best_timebase(self, desired_no_samples, desired_interval_ns, segment_index=0):
         """
         Automatically find the best timebase.
 
-        Parameters
-        ----------
-        desired_no_samples (int): Number of samples you want to capture.
-        desired_interval_ns (float): Desired time interval between samples in milliseconds.
-        segment_index (int): Memory segment to use (default 0).
+        :param desired_no_samples (int): Number of samples you want to capture.
+        :param desired_interval_ns (float): Desired time interval between samples in milliseconds.
+        :param segment_index (int): Memory segment to use (default 0).
 
-        Returns
-        -------
-        best_timebase (int):  Timebase code to use.
-        actual_interval_ns (float): Actual achievable time interval per sample.
-        max_samples(int): Maximum number of samples available for this timebase.
+        :return best_timebase (int):  Timebase code to use.
+        :return actual_interval_ns (float): Actual achievable time interval per sample.
+        :return max_samples(int): Maximum number of samples available for this timebase.
         """
         best_timebase = None
         actual_interval_ns = None
@@ -387,7 +342,7 @@ class PicoScope:
         self.channel_ranges[channel_int] = range_int
 
         if enabled == 1: # save enabled channels to create buffers
-            self.enabled_channels.append(channel_int)
+            self.enabled_channels[channel_int] = 1
 
     #######################################################################
     ######################### Data Acquisition ############################
@@ -405,9 +360,11 @@ class PicoScope:
         :param mode: downsampling mode [0:PS4000A_RATIO_MODE_NONE, 2: PS4000A_RATIO_MODE_DECIMATE, 4: PS4000A_RATIO_MODE_AVERAGE]
         :return:
         """
-        self.status[f"setDataBuffer_{channel}"] = ps.ps4000aSetDataBuffer(self.chandle, channel, ctypes.byref(buffer), bufferLth,
+        ptr = buffer.ctypes.data_as(ctypes.POINTER(ctypes.c_int16))
+        self.status[f"setDataBuffer_{channel}"] = ps.ps4000aSetDataBuffer(self.chandle, channel, ptr, bufferLth,
                                                                segmentIndex, mode)
         assert_pico_ok(self.status[f"setDataBuffer_{channel}"])
+        print(f"[DEBUG] Set Buffers status: {self.status[f"setDataBuffer_{channel}"]}")
 
     def set_max_min_data_buffers(self, channel:int, bufferMax, bufferMin, bufferLth:int, segmentIndex:int, mode: int):
         """
@@ -420,10 +377,10 @@ class PicoScope:
         :param mode: default PS4000A_RATIO_MODE_AGGREGATE
         :return:
         """
-
-        self.status[f"setMaxMinDataBuffer_{channel}"] = ps.ps4000aSetDataBuffer(self.chandle, channel, ctypes.byref(bufferMax),
-                                                                     ctypes.byref(bufferMin),
-                                                                     bufferLth, segmentIndex, mode)
+        pmax = bufferMax.ctypes.data_as(ctypes.POINTER(ctypes.c_int16))
+        pmin = bufferMin.ctypes.data_as(ctypes.POINTER(ctypes.c_int16))
+        self.status[f"setMaxMinDataBuffer_{channel}"] = ps.ps4000aSetDataBuffer(self.chandle, channel,
+                                                                                pmax, pmin, bufferLth, segmentIndex, mode)
         assert_pico_ok(self.status[f"setMaxMinDataBuffer_{channel}"])
 
     def run_stream(self,
@@ -451,44 +408,39 @@ class PicoScope:
         :param downSampleRatioMode:
         :return:
         """
-
-        self.fetch_ready = False
-
+        # fixme: Starts sampling even without trigger
         # prepare arguments
-        c_sampleInterval = ctypes.c_int(sampleInterval_ns)
+        c_sampleInterval = ctypes.c_int32(sampleInterval_ns)
         timeUnits = ps.PS4000A_TIME_UNITS['PS4000A_NS']  # Nanoseconds
         downSampleRatioMode_int = _get_ratio_mode(downSampleRatioMode)
 
         # Define buffers
-        self.max_samples = maxPreTriggerSamples + maxPostTriggerSamples
-        buffer_size, no_buffers = _choose_buffer_size(self.max_samples)
-        overviewBufferSize =  ctypes.c_int(buffer_size)
+        self.total_samples = maxPreTriggerSamples + maxPostTriggerSamples
+        buffer_size = 500
+        overviewBufferSize = buffer_size
 
-        # Allocate and register working buffers and allocate complete buffers
-        for ch in self.enabled_channels:
-            self.buffers[ch] = np.zeros(shape=buffer_size, dtype=np.int16)
-            self.complete_buffers[ch] = np.zeros(shape=self.total_samples, dtype=np.int16)
-
-            if downSampleRatioMode == 'aggregate':
-                self.max_buffers[ch] = np.zeros(shape=buffer_size, dtype=np.int16)
-                self.complete_max_buffers[ch] = np.zeros(shape=self.total_samples, dtype=np.int16)
-
-                self.set_max_min_data_buffers(
-                    channel=ch,
-                    bufferMax=self.max_buffers[ch].ctypes.data_as(ctypes.POINTER(ctypes.c_int16)),
-                    bufferMin=self.buffers[ch].ctypes.data_as(ctypes.POINTER(ctypes.c_int16)),
-                    bufferLth=buffer_size,
-                    segmentIndex=0,
-                    mode=downSampleRatioMode_int
-                )
-            else:
-                self.set_data_buffer(
-                    channel=ch,
-                    buffer=self.buffers[ch].ctypes.data_as(ctypes.POINTER(ctypes.c_int16)),
-                    bufferLth=buffer_size,
-                    segmentIndex=0,
-                    mode=downSampleRatioMode_int
-                )
+        # Allocate and register working buffers for enabled channels
+        for ch, enabled in enumerate(self.enabled_channels):
+            if enabled == 1:
+                self.buffers[ch] = np.zeros(shape=buffer_size, dtype=np.int16)
+                if downSampleRatioMode == 'aggregate':
+                    self.max_buffers[ch] = np.zeros(shape=buffer_size, dtype=np.int16)
+                    self.set_max_min_data_buffers(
+                        channel=ch,
+                        bufferMax=self.max_buffers[ch],
+                        bufferMin=self.buffers[ch],
+                        bufferLth=buffer_size,
+                        segmentIndex=0,
+                        mode=downSampleRatioMode_int
+                    )
+                else:
+                    self.set_data_buffer(
+                        channel=ch,
+                        buffer=self.buffers[ch],
+                        bufferLth=buffer_size,
+                        segmentIndex=0,
+                        mode=downSampleRatioMode_int
+                    )
 
         # Configure streaming sampling mode
         self.status["runStreaming"] = ps.ps4000aRunStreaming(
@@ -496,7 +448,10 @@ class PicoScope:
             maxPostTriggerSamples, autoStop, downSampleRatio, downSampleRatioMode_int, overviewBufferSize)
         assert_pico_ok(self.status["runStreaming"])
 
+        print(f"[DEBUG] Run Stream status: {self.status["runStreaming"]}")
+
         self.actual_sample_interval = c_sampleInterval.value
+        print(f"[DEBUG] Sample Interval {sampleInterval_ns} -> {self.actual_sample_interval}")
 
         # Prepare callback
         self.next_sample = 0
@@ -521,36 +476,51 @@ class PicoScope:
                 location to send any data, such as a status flag, back to the application.
             :return:
             """
+            print(f"[DEBUG] Stream was called back... !!")
+            self.stop_h5_writer = False
+            start_sample = self.next_sample
             self.was_called_back = True
+            blocks = [
+                self.buffers[ch][startIndex:startIndex + noOfSamples].astype(np.int16).copy()
+                for ch, enabled in enumerate(self.enabled_channels)
+                if enabled == 1
+            ]
+            data2d = np.stack(blocks, axis=1)  # shape (noOfSamples, n_channels)
 
-            # Copy data from working buffers to the complete buffers with corresponding channel serial number.
-            dest_end = self.next_sample + noOfSamples
-            source_end = startIndex + noOfSamples
+            try:
+                self.h5_queue.put_nowait((start_sample, data2d))
+                self.next_sample += noOfSamples
+                # print(f"[DEBUG] Data pushed to queue: start_sample={start_sample}, end_sample={start_sample + noOfSamples}")
+            except queue.Full:
+                self.next_sample += noOfSamples
+                print(f"[DEBUG] Queue full! Dropping data: start_sample={start_sample}, end_sample={start_sample + noOfSamples}")
+                pass
 
-            for chan, buff in self.buffers.items():
-                self.complete_buffers[chan][self.next_sample:dest_end] = buff[startIndex:source_end]
-
-            self.next_sample += noOfSamples
+            self.triggered_at = triggerAt # DEBUG
             if autoStop:
                 self.auto_stop_outer = True
 
+        self.c_lpReady = ps.StreamingReadyType(streaming_callback)
 
-        c_lpReady = ps.StreamingReadyType(streaming_callback)
 
-        # Start a thread to fetch data from the driver in a loop, copying it out from registered buffers into complete ones.
         def fetching_thread():
             while self.next_sample < self.total_samples and not self.auto_stop_outer and not self._stop_threads:
                 self.was_called_back = False
-                self.status["getStreamingValues"] = ps.ps4000aGetStreamingLatestValues(self.chandle, c_lpReady, None)
+                self.status["getStreamingValues"] = ps.ps4000aGetStreamingLatestValues(self.chandle, self.c_lpReady, None)
+                assert_pico_ok(self.status["getStreamingValues"])
+
                 if not self.was_called_back:
                     time.sleep(0.01)
 
-            self.fetch_ready = True
+            print(f"[DEBUG] Fetcher thread finished...")
+            self.stop_h5_writer = True
 
-        fetcher = threading.Thread(target=fetching_thread, daemon=True)
-        fetcher.start()
+        # Start a thread to register callback and fetch data
+        self.fetcher = threading.Thread(target=fetching_thread, daemon=True)
+        self.fetcher.start()
 
     def run_block(self, preTriggerSamples, postTriggerSamples, desiredInterval):
+        # todo: not supported yet (not used)
         """
         In this mode, the scope stores data in internal buffer memory and then transfers it to the
         PC. When the data has been collected it is possible to examine the data, with an optional
@@ -592,10 +562,27 @@ class PicoScope:
     def run_rapid(self):
         # todo:
         print("Rapid block sampling mode is NOT implemented yet")
-        logger.info("Rapid block sampling mode is NOT implemented yet")
 
-    def adc2mv(self, ch, buffer_adc):
-        return adc2mV(buffer_adc, self.channel_ranges[ch], self.maxADC)
+    def adc2mv(self, data2d_adc):
+        """Convert raw ADC counts from enabled PicoScope channels to mV.
+
+        Each column of `data2d_adc` corresponds to one enabled channel.
+        First, maps those columns to their actual channel numbers (0–7),
+        applies the appropriate voltage range for each, and converts.
+
+        :param data2d_adc (np.ndarray 2D)
+        :return data2d_mV (np.ndarray 2D)
+        """
+        enabled_channels = [i for i, enabled in enumerate(self.enabled_channels) if enabled == 1]
+
+        blocks_mV = []
+        for i, ch in enumerate(enabled_channels):
+            buffer_adc = data2d_adc[:, i].astype(np.int32)  # get the column of channel
+            mv = adc2mV(buffer_adc, self.channel_ranges[ch], self.maxADC)
+            blocks_mV.append(mv)
+
+        data2d_mV = np.stack(blocks_mV, axis=1)
+        return data2d_mV
 
     #######################################################################
     ############################# Triggers ################################
@@ -603,7 +590,7 @@ class PicoScope:
 
     def set_trigger_conditions(self, sources, info:str):
         """
-         conditions: list of sources:int
+         conditions: list of sources (int)
          info: str
          """
         ps_conditions = []
@@ -640,11 +627,13 @@ class PicoScope:
             ctypes.byref(dir_array),
             nDirections
         )
+        assert_pico_ok(self.status["setTriggerChannelDirections"])
+
 
     def set_trigger_channel_properties(self, properties):
         ps_properties = []
         for prop in properties:
-            ch_int = _get_channel_number(prop["channel"])
+            ch_int = _get_channel_number(prop["source"])
             threshold_mode_int = _get_threshold_mode(prop["threshold_mode"])
             ch_range = self.channel_ranges[ch_int]
             threshold_upper_adc = mV2adc(prop["threshold_upper"], ch_range, self.maxADC)
@@ -675,10 +664,13 @@ class PicoScope:
             0,
             autoTrigger_ms
         )
+        assert_pico_ok(self.status["setTriggerChannelProperties"])
 
     def set_trigger_delay(self, delay):
         """delay in sample periods"""
         self.status["setTriggerDelay"] = ps.ps4000aSetTriggerDelay(self.chandle, delay)
+        assert_pico_ok(self.status["setTriggerDelay"])
+
 
     def set_simple_edge_trigger(self,
                                 enable: int,  # 0 = disable
@@ -698,7 +690,7 @@ class PicoScope:
         :param autoTrigger_ms: trigger timeout in ms, 0 = infinite
         :return:
         """
-
+        print(f"DEBUG: simple trigger enable = {enable} for source {source}")
         # Convert millivolts into ADC count (threshold)
         source_int = _get_channel_number(source)
         direction_int = _get_direction(direction)
@@ -761,6 +753,7 @@ class PicoScope:
 
     def siggen_software_control(self, state):
         """
+        To use in manual mode.
         This function causes a trigger event, or starts and stops gating. It is used when the signal generator is set to SIGGEN_SOFT_TRIG
         :param state: sets the trigger gate high or low when the trigger type is set to either SIGGEN_GATE_HIGH or SIGGEN_GATE_LOW. Ignored for other trigger types
         :return:
@@ -771,17 +764,20 @@ class PicoScope:
 #######################################################################
 ####################### Helpers #######################################
 #######################################################################
-# Map the readable values into PicoScope contants
-def _get_channel_number(channel_name: str) -> int:
-    if channel_name.endswith('external'): return 8
-    if channel_name.endswith('aux'): return 9
-    if channel_name.lower().endswith('pulse_width'): return 0x10000000
+# Map the readable values into PicoScope constants
+def _get_channel_number(channel_name) -> int:
+    channel_name = _decode_if_bytes(channel_name)
+
+    if channel_name.endswith('external'):
+        return 8
+    if channel_name.endswith('aux'):
+        return 9
+    if channel_name.lower().endswith('pulse_width'):
+        return 0x10000000
 
     last_ch = channel_name[-1].upper()
-    if last_ch.isdigit():
-        ch_num = int(last_ch)
-        if ch_num in range(8):
-            return int(last_ch)
+    if last_ch.isdigit() and int(last_ch) in range(8):
+        return int(last_ch)
 
     letter_map = {c: i for i, c in enumerate("ABCDEFGH")}
     if last_ch in letter_map:
@@ -792,8 +788,15 @@ def _get_channel_number(channel_name: str) -> int:
         f"Expected suffix A..H or 0..7 or 'external', 'aux', or 'width_source'."
     )
 
+def _get_coupling(coupling: str) -> int:
+    mapping = {"ac": 0, "dc": 1}
+    if coupling not in mapping:
+        raise ValueError(...)
+    return mapping[coupling]
+
 
 def _get_direction(direction: str) -> int:
+    direction = _decode_if_bytes(direction).lower()
     direction_map = {
         "above": ps.PS4000A_THRESHOLD_DIRECTION["PS4000A_ABOVE"],
         "below": ps.PS4000A_THRESHOLD_DIRECTION["PS4000A_BELOW"],
@@ -819,32 +822,22 @@ def _get_direction(direction: str) -> int:
         )
     return direction_map[key]
 
-
 def _get_ratio_mode(ratio_mode: str) -> int:
-    match ratio_mode.lower():
-        case 'none':
-            return 0
-        case 'aggregate':
-            return 1
-        case 'decimate':
-            return 2
-        case 'average':
-            return 4
-        case _:
-            raise ValueError(
-                f"Invalid ratio_mode: {ratio_mode}. Allowed values: 'none', 'aggregate', 'decimate', 'average'")
-
+    ratio_mode = _decode_if_bytes(ratio_mode).lower()
+    mapping = {"none": 0, "aggregate": 1, "decimate": 2, "average": 4}
+    if ratio_mode not in mapping:
+        raise ValueError( f"Invalid ratio_mode: {ratio_mode}. Allowed values: 'none', 'aggregate', 'decimate', 'average'")
+    return mapping[ratio_mode]
 
 def _get_threshold_mode(threshold_mode: str) -> int:
-    if threshold_mode.lower() == 'level':
-        return 0
-    elif threshold_mode.lower() == 'window':
-        return 1
-    else:
+    threshold_mode = _decode_if_bytes(threshold_mode).lower()
+    mapping = {"level": 0, "window": 1}
+    if threshold_mode not in mapping:
         raise ValueError(f"Invalid threshold mode: {threshold_mode}. Allowed: 'level', 'window'")
-
+    return mapping[threshold_mode]
 
 def _get_wave_type(wave_type: str) -> int:
+    wave_type = _decode_if_bytes(wave_type).upper()
     wave_types = [
         'SINE',
         'SQUARE',
@@ -859,14 +852,9 @@ def _get_wave_type(wave_type: str) -> int:
         'MAX_WAVE_TYPES',
     ]
 
-    wave_type_upper = wave_type.upper()
-
-    for index, entry in enumerate(wave_types):
-        if wave_type_upper == entry:
-            return index
-
-    raise ValueError(f"Invalid Wave type: {wave_type}")
-
+    if wave_type not in wave_types:
+        raise ValueError(f"Invalid wave_type: {wave_type}")
+    return wave_types.index(wave_type)
 
 def _get_range(ch_range: float) -> int:
     allowed_ranges = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200]
@@ -881,41 +869,27 @@ def _get_range(ch_range: float) -> int:
 
     raise RuntimeError("Unexpected error: range value not matched.")
 
-
 def _get_info(info: str) -> int:
-    if info == 'clear':
-        return 1
-    elif info == 'add':
-        return 2
-    else:
-        raise ValueError(f"Invalid info: {info}. Allowed values: 'clear', 'add'")
-
+    info = _decode_if_bytes(info).lower()
+    mapping = {"clear": 1, "add": 2}
+    if info not in mapping:
+        raise ValueError(f"Invalid info: {info}")
+    return mapping[info]
 
 def _get_siggen_trigger_type(trig_type: str) -> int:
+    trig_type = _decode_if_bytes(trig_type).lower()
     trig_types = ['rising', 'falling', 'gate_high', 'gate_low']
     for index, entry in enumerate(trig_types):
-        if type == entry:
+        if trig_type == entry:
             return index
-
     raise ValueError(f"Invalid trigger type: {trig_type}. Allowed values: {trig_types}")
 
-
 def _get_siggen_trigger_source(source: str) -> int:
-    trig_sources = ['none', 'scope_trig', 'aus_in', 'ext_in', 'soft_trig']
-    for index, entry in enumerate(trig_sources):
-        if source == entry:
-            return index
-
-    raise ValueError(f"Invalid trigger source: {source}. Allowed values: {trig_sources}")
-
-
-def _get_coupling(coupling: str) -> int:
-    if coupling.lower() == 'ac':
-        return 0
-    elif coupling.lower() == 'dc':
-        return 1
-    else:
-        raise ValueError(f"Invalid coupling: {coupling}. Allowed values: 'ac', 'dc'")
+    source = _decode_if_bytes(source).lower()
+    mapping = {'none': 0, 'scope_trig': 1, 'aus_in': 2, 'ext_in': 3, 'soft_trig': 4}
+    if source not in mapping:
+        raise ValueError(f"Invalid siggen trigger source: {source}")
+    return mapping[source]
 
 def _choose_buffer_size(max_samples: int, target_buffer_size: int = 500):
     """
@@ -925,7 +899,6 @@ def _choose_buffer_size(max_samples: int, target_buffer_size: int = 500):
     :param target_buffer_size: desired buffer size
     :return: (buffer_size, no_buffers)
     """
-
     if max_samples <= target_buffer_size:
         return max_samples, 1
 
@@ -936,3 +909,8 @@ def _choose_buffer_size(max_samples: int, target_buffer_size: int = 500):
 
     no_buffers = max_samples // buffer_size
     return buffer_size, no_buffers
+
+def _decode_if_bytes(arg):
+    if isinstance(arg, (bytes, np.bytes_)):
+        return arg.decode()
+    return arg

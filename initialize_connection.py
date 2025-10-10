@@ -31,20 +31,23 @@ from user_devices.BNC_575.labscript_devices import BNC_575, PulseChannel
 # from labscript_devices.BS_Series.models.BS_341A import BS_341A
 from user_devices.ids_camera.labscript_devices import IDSCamera
 from user_devices.PicoScope4000A.labscript_devices import PicoScope4000A, PicoAnalogIn
+from user_devices.AlliedVision.labscript_devices import AlviumCamera
 
 from user_devices.logger_config import logger
 
+def init_alvium():
+    AlviumCamera(name='AlliedVision', serial_number="0C9X6")
 def init_picoscope():
     picoscope = PicoScope4000A(name='picoscope',
-                   serial_number='0000000',
+                   serial_number='HO248/173',
                    )
     # 8 channels
-    # name, parent_device, connection, enabled=[0,1], coupling=['ac', 'dc'], range=[0.1..200], analog_offset=float
-    PicoAnalogIn(name='conn1', parent_device=picoscope, connection='channel_A', enabled=1, coupling='ac', range=50, analog_offset=0.0)
-    PicoAnalogIn(name='conn2', parent_device=picoscope, connection='channel_B', enabled=1, coupling='dc', range=50, analog_offset=0.0)
-    PicoAnalogIn(name='conn3', parent_device=picoscope, connection='channel_C', enabled=1, coupling='ac', range=24, analog_offset=0.0)
-    PicoAnalogIn(name='conn4', parent_device=picoscope, connection='channel_D', enabled=0, coupling='ac', range=50, analog_offset=0.0)
-    PicoAnalogIn(name='conn5', parent_device=picoscope, connection='channel_E', enabled=0, coupling='ac', range=50, analog_offset=0.0)
+    # name, parent_device, connection, enabled=[0,1], coupling=['ac', 'dc'], analog_offset_v=[0.1..200], analog_offset_v=float
+    PicoAnalogIn(name='conn1', parent_device=picoscope, connection='channel_A', enabled=1, coupling='dc', range_v=10, analog_offset_v=0.0)
+    PicoAnalogIn(name='conn2', parent_device=picoscope, connection='channel_B', enabled=0, coupling='dc', range_v=10, analog_offset_v=0.0)
+    PicoAnalogIn(name='conn3', parent_device=picoscope, connection='channel_C', enabled=0, coupling='ac', range_v=24, analog_offset_v=0.0)
+    PicoAnalogIn(name='conn4', parent_device=picoscope, connection='channel_D', enabled=1, coupling='ac', range_v=50, analog_offset_v=0.0)
+    PicoAnalogIn(name='conn5', parent_device=picoscope, connection='channel_E', enabled=0, coupling='ac', range_v=50, analog_offset_v=0.0)
 
 def init_IDS(trigger_device):
     IDSCamera(name='CameraIds',

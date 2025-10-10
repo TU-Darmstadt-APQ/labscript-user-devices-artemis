@@ -15,6 +15,7 @@ class PicoScopeTab(DeviceTab):
         connection_table = self.settings['connection_table']
         device = connection_table.find_by_name(self.device_name)
         properties = device.properties
+        self.worker_kwargs = {}
 
         layout = self.get_tab_layout()
         self.tabs = QTabWidget()
@@ -30,6 +31,7 @@ class PicoScopeTab(DeviceTab):
             ["Channel", "Name", "Enabled", "Coupling", "Range", "Analog Offset"],
             channels_configs
         ))
+        self.worker_kwargs["channels_configs"] = channels_configs
         self.tabs.addTab(channels_tab, "Channels")
 
         # 2. Trigger
@@ -40,11 +42,13 @@ class PicoScopeTab(DeviceTab):
         if trigger_conditions:
             trigger_layout.addWidget(self.make_table("Trigger Conditions",
                                                      ["Sources", "Info"], trigger_conditions))
+            self.worker_kwargs["trigger_conditions"] = trigger_conditions
 
         trigger_directions = properties.get("trigger_directions_config", [])
         if trigger_directions:
             trigger_layout.addWidget(self.make_table("Trigger Directions",
                                                      ["Source", "Direction"],trigger_directions))
+            self.worker_kwargs["trigger_directions"] = trigger_directions
 
         trigger_properties = properties.get("trigger_properties_config", [])
         if trigger_properties:
@@ -53,14 +57,17 @@ class PicoScopeTab(DeviceTab):
                 ["Source", "Threshold Upper", "Threshold Lower", "Upper Hysteresis", "Lower Hysteresis","Threshold Mode"],
                 trigger_properties
             ))
+            self.worker_kwargs["trigger_properties"] = trigger_properties
 
         trigger_delay = properties.get("trigger_delay_config", {})
         if trigger_delay:
             trigger_layout.addWidget(self.make_table("Trigger Delay", ["Parameter", "Value"], trigger_delay))
+            self.worker_kwargs["trigger_delay"] = trigger_delay
 
         simple_trigger = properties.get("simple_trigger_config", {})
         if simple_trigger:
             trigger_layout.addWidget(self.make_table("Simple Trigger", ["Parameter", "Value"], simple_trigger))
+            self.worker_kwargs["simple_trigger"] = simple_trigger
 
         self.tabs.addTab(trigger_tab, "Trigger")
 
@@ -71,14 +78,17 @@ class PicoScopeTab(DeviceTab):
         block_config = properties.get("block_config", {})
         if block_config:
             sampling_layout.addWidget(self.make_table("Block Config", ["Parameter", "Value"], block_config))
+            self.worker_kwargs["block_config"] = block_config
 
         rapid_block_config = properties.get("rapid_block_config", {})
         if rapid_block_config:
             sampling_layout.addWidget(self.make_table("Rapid Block Config", ["Parameter", "Value"], rapid_block_config))
+            self.worker_kwargs["rapid_block_config"] = rapid_block_config
 
         stream_config = properties.get("stream_config", {})
         if stream_config:
             sampling_layout.addWidget(self.make_table("Stream Config", ["Parameter", "Value"], stream_config))
+            self.worker_kwargs["stream_config"] = stream_config
 
         self.tabs.addTab(sampling_tab, "Sampling")
 
@@ -89,6 +99,7 @@ class PicoScopeTab(DeviceTab):
         siggen_config = properties.get("siggen_config", {})
         if siggen_config:
             siggen_layout.addWidget(self.make_table("SigGen Config", ["Parameter", "Value"], siggen_config))
+            self.worker_kwargs["siggen_config"] = siggen_config
 
         self.tabs.addTab(siggen_tab, "SigGen")
 
@@ -98,11 +109,15 @@ class PicoScopeTab(DeviceTab):
         self.start_button = QPushButton("Start Block Capture")
         self.stream_button = QPushButton("Start Streaming")
         self.siggen_button = QPushButton("Trigger Signal Generator")
+        self.start_button.setEnabled(False)
+        self.stream_button.setEnabled(False)
+        self.siggen_button.setEnabled(False)
         button_layout.addWidget(self.start_button)
         button_layout.addWidget(self.stream_button)
         button_layout.addWidget(self.siggen_button)
         layout.addLayout(button_layout)
 
+        logger.debug(self.worker_kwargs)
         return
 
     def initialise_workers(self):
@@ -111,13 +126,24 @@ class PicoScopeTab(DeviceTab):
 
         # look up the serial number
         serial = device.properties["serial_number"]
-        no_inputs = device.properties["channels_number"]
-
+        active_mode = device.properties["run_mode_config"]['active_mode']
         # Start a worker process
         self.create_worker(
             'main_worker',
             'user_devices.PicoScope4000A.blacs_workers.PicoScopeWorker',
-            {"serial_number": serial, "no_inputs": no_inputs}  # All connection table properties should be added
+            {"serial_number": serial,
+             "simple_trigger": self.worker_kwargs.get("simple_trigger", {}),
+             "channels_configs": self.worker_kwargs.get("channels_configs", []),
+             "trigger_conditions": self.worker_kwargs.get("trigger_conditions", []),
+             "trigger_directions": self.worker_kwargs.get("trigger_directions", []),
+             "trigger_properties": self.worker_kwargs.get("trigger_properties", []),
+             "trigger_delay": self.worker_kwargs.get("trigger_delay", {}),
+             "block_config": self.worker_kwargs.get("block_config", {}),
+             "rapid_block_config": self.worker_kwargs.get("rapid_block_config", {}),
+             "stream_config": self.worker_kwargs.get("stream_config", {}),
+             "siggen_config": self.worker_kwargs.get("siggen_config", {}),
+             "active_mode": active_mode
+             }
         )
         self.primary_worker = "main_worker"
 
