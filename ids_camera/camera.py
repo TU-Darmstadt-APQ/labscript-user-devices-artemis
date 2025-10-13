@@ -32,7 +32,7 @@ class CameraError(BaseCameraError):
 TARGET_PIXEL_FORMAT = ids_peak_ipl.PixelFormatName_BGRa8
 
 class Camera:
-    def __init__(self, device_manager, serial_number, interface=None):
+    def __init__(self, device_manager, serial_number):
         self.ipl_image = None
         self.device_manager = device_manager
 
@@ -40,7 +40,6 @@ class Camera:
         self._datastream = None
         self.acquisition_running = False
         self.node_map = None
-        self._interface = interface
         self.make_image = False
         self._buffer_list = []
         self.opened = False
@@ -52,9 +51,6 @@ class Camera:
             time.sleep(2)
         else:
             raise CameraError("Cannot find device. Set camera's serial number!")
-
-        if self._interface is not None:
-            self._interface.set_camera(self)
 
         self._image_converter = ids_peak_ipl.ImageConverter()
         self._image_transformer = ids_peak_ipl.ImageTransformer()
@@ -189,9 +185,9 @@ class Camera:
             # Pre-allocate conversion buffers to speed up first image conversion
             # while the acquisition is running
             # NOTE: Re-create the image converter, so old conversion buffers get freed
-            self._image_converter.PreAllocateConversion(
-                input_pixel_format, TARGET_PIXEL_FORMAT,
-                image_width, image_height)
+            # self._image_converter.PreAllocateConversion(
+            #     input_pixel_format, TARGET_PIXEL_FORMAT,
+            #     image_width, image_height)
 
             self._datastream.StartAcquisition()
             self.node_map.FindNode("AcquisitionStart").Execute()
@@ -243,7 +239,9 @@ class Camera:
     def set_exposure_time(self, time: float):
         """Sets the camera exposure time in microseconds.
         Precondition: The IDS peak API is initialized and a camera is opened.
+        :param time: in ms
         """
+        time = time * 1000
         if not self.opened:
             raise CameraError("Cannot set exposure time while camera is closed.")
 
@@ -516,7 +514,7 @@ class Camera:
 
         self.start_acquisition()
 
-    ###################### Heplers for manual console execution through main.py ##################
+    ###################### Helpers ##################
     def ipl2numpy(self, image):
         """ids_peak_ipl.ids_peak_ipl.Image --> numpy array"""
         np_array = image.get_numpy()
@@ -552,7 +550,7 @@ class Camera:
             if (entry.AccessStatus() != ids_peak.NodeAccessStatus_NotAvailable
                     and entry.AccessStatus() != ids_peak.NodeAccessStatus_NotImplemented):
                 availableEntries.append(entry.SymbolicValue())
-        print(f"{Node} available entries: {availableEntries} \t current={value}")
+        print(f"{node} available entries: {availableEntries} \t current={value}")
 
 
 import threading
@@ -579,13 +577,12 @@ class TriggerWorker(threading.Thread):
         try:
             while self.running:
                 try:
-                    # buffer with image?
-                    print("[Trigger Worker] Attempt to read the buffer ...")
                     buffer = self.data_stream.WaitForFinishedBuffer(self.timeout_ms)
                     if buffer is None:
-                        print("[Trigger Worker] No trigger")
+                        print("[Trigger Worker] Reading buffer ...  Empty ")
                         continue
 
+                    print("[Trigger Worker] Reading buffer ... image found ")
                     # Image is transferred, get image from buffer (shallow copy) and free the buffer
                     ipl_image = ids_peak_ipl_extension.BufferToImage(buffer)
                     self.image_queue.put(ipl_image)

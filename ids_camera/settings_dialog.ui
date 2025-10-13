@@ -54,39 +54,6 @@
            <property name="spacing">
             <number>4</number>
            </property>
-           <item row="0" column="3">
-            <widget class="QSpinBox" name="offset_x">
-             <property name="maximum">
-              <number>1280</number>
-             </property>
-            </widget>
-           </item>
-           <item row="2" column="3">
-            <widget class="QSpinBox" name="width">
-             <property name="minimum">
-              <number>16</number>
-             </property>
-             <property name="maximum">
-              <number>1280</number>
-             </property>
-             <property name="singleStep">
-              <number>4</number>
-             </property>
-             <property name="value">
-              <number>1280</number>
-             </property>
-             <property name="displayIntegerBase">
-              <number>10</number>
-             </property>
-            </widget>
-           </item>
-           <item row="1" column="3">
-            <widget class="QSpinBox" name="offset_y">
-             <property name="maximum">
-              <number>1024</number>
-             </property>
-            </widget>
-           </item>
            <item row="2" column="0">
             <widget class="QLabel" name="width_2">
              <property name="text">
@@ -94,17 +61,10 @@
              </property>
             </widget>
            </item>
-           <item row="3" column="1">
-            <widget class="QSlider" name="height_slider">
-             <property name="orientation">
-              <enum>Qt::Horizontal</enum>
-             </property>
-            </widget>
-           </item>
-           <item row="2" column="1">
-            <widget class="QSlider" name="width_slider">
-             <property name="orientation">
-              <enum>Qt::Horizontal</enum>
+           <item row="1" column="2">
+            <widget class="QSpinBox" name="offset_y">
+             <property name="maximum">
+              <number>1024</number>
              </property>
             </widget>
            </item>
@@ -122,21 +82,7 @@
              </property>
             </widget>
            </item>
-           <item row="0" column="1">
-            <widget class="QSlider" name="offset_x_slider">
-             <property name="orientation">
-              <enum>Qt::Horizontal</enum>
-             </property>
-            </widget>
-           </item>
-           <item row="1" column="1">
-            <widget class="QSlider" name="offset_y_slider">
-             <property name="orientation">
-              <enum>Qt::Horizontal</enum>
-             </property>
-            </widget>
-           </item>
-           <item row="3" column="3">
+           <item row="3" column="2">
             <widget class="QSpinBox" name="height">
              <property name="minimum">
               <number>4</number>
@@ -158,10 +104,64 @@
              </property>
             </widget>
            </item>
+           <item row="2" column="2">
+            <widget class="QSpinBox" name="width">
+             <property name="minimum">
+              <number>16</number>
+             </property>
+             <property name="maximum">
+              <number>1280</number>
+             </property>
+             <property name="singleStep">
+              <number>4</number>
+             </property>
+             <property name="value">
+              <number>1280</number>
+             </property>
+             <property name="displayIntegerBase">
+              <number>10</number>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="2">
+            <widget class="QSpinBox" name="offset_x">
+             <property name="maximum">
+              <number>1280</number>
+             </property>
+            </widget>
+           </item>
            <item row="3" column="0">
             <widget class="QLabel" name="height_2">
              <property name="text">
               <string>Height</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <widget class="QSlider" name="offset_x_slider">
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="1">
+            <widget class="QSlider" name="offset_y_slider">
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="1">
+            <widget class="QSlider" name="width_slider">
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
+             </property>
+            </widget>
+           </item>
+           <item row="3" column="1">
+            <widget class="QSlider" name="height_slider">
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
              </property>
             </widget>
            </item>
@@ -190,60 +190,17 @@
            </rect>
           </property>
           <layout class="QGridLayout" name="gridLayout_brightness">
-           <item row="2" column="0">
-            <widget class="QLabel" name="exp">
-             <property name="toolTip">
-              <string>Exposure time</string>
-             </property>
-             <property name="text">
-              <string>[ms]</string>
-             </property>
-             <property name="scaledContents">
-              <bool>true</bool>
-             </property>
-            </widget>
-           </item>
-           <item row="1" column="2">
-            <widget class="QSlider" name="slider_fps">
-             <property name="orientation">
-              <enum>Qt::Horizontal</enum>
-             </property>
-            </widget>
-           </item>
-           <item row="2" column="2">
-            <widget class="QSlider" name="slider_exp">
-             <property name="orientation">
-              <enum>Qt::Horizontal</enum>
-             </property>
-            </widget>
-           </item>
            <item row="1" column="0">
             <widget class="QLabel" name="fps">
              <property name="toolTip">
               <string>Frame rate</string>
              </property>
              <property name="text">
-              <string>[fps]</string>
+              <string>Frame Rate [fps]</string>
              </property>
             </widget>
            </item>
-           <item row="1" column="3">
-            <widget class="QDoubleSpinBox" name="spin_fps">
-             <property name="decimals">
-              <number>1</number>
-             </property>
-             <property name="minimum">
-              <double>0.500000000000000</double>
-             </property>
-             <property name="maximum">
-              <double>17.199999999999999</double>
-             </property>
-             <property name="value">
-              <double>10.000000000000000</double>
-             </property>
-            </widget>
-           </item>
-           <item row="3" column="3">
+           <item row="3" column="2">
             <widget class="QDoubleSpinBox" name="spin_gain">
              <property name="decimals">
               <number>1</number>
@@ -259,14 +216,43 @@
              </property>
             </widget>
            </item>
-           <item row="3" column="2">
-            <widget class="QSlider" name="slider_gain">
-             <property name="orientation">
-              <enum>Qt::Horizontal</enum>
+           <item row="1" column="2">
+            <widget class="QDoubleSpinBox" name="spin_fps">
+             <property name="decimals">
+              <number>1</number>
+             </property>
+             <property name="minimum">
+              <double>0.500000000000000</double>
+             </property>
+             <property name="maximum">
+              <double>80.000000000000000</double>
+             </property>
+             <property name="value">
+              <double>10.000000000000000</double>
              </property>
             </widget>
            </item>
-           <item row="2" column="3">
+           <item row="3" column="0">
+            <widget class="QLabel" name="gain">
+             <property name="text">
+              <string>Gain</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="0">
+            <widget class="QLabel" name="exp">
+             <property name="toolTip">
+              <string>Exposure time</string>
+             </property>
+             <property name="text">
+              <string>Exposure Time [us]</string>
+             </property>
+             <property name="scaledContents">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="2">
             <widget class="QDoubleSpinBox" name="spin_exp">
              <property name="decimals">
               <number>1</number>
@@ -279,13 +265,6 @@
              </property>
              <property name="value">
               <double>50.000000000000000</double>
-             </property>
-            </widget>
-           </item>
-           <item row="3" column="0">
-            <widget class="QLabel" name="gain">
-             <property name="text">
-              <string>Gain</string>
              </property>
             </widget>
            </item>

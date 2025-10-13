@@ -6,7 +6,7 @@ from blacs.tab_base_classes import MODE_MANUAL
 # from qtutils.qt.QtWidgets import QGraphicsView, QGraphicsScene, QWidget
 from qtutils.qt import QtWidgets, QtGui, QtCore
 from qtutils.qt.QtGui import QIcon
-from qtutils.qt.QtWidgets import QButtonGroup, QApplication, QStyle, QPushButton, QSlider
+from qtutils.qt.QtWidgets import QButtonGroup, QApplication, QStyle, QPushButton, QSlider, QComboBox
 from qtutils.qt.QtCore import QPropertyAnimation, QEasingCurve, Qt, pyqtSignal
 
 import os
@@ -205,32 +205,32 @@ class CameraTab(DeviceTab):
         dialog_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'settings_dialog.ui')
         self.settings_dialog = UiLoader().load(dialog_path)
 
-        # Remove QSliders, replace with DoubleSliders
-        self.slider_fps = DoubleSlider(0.5, 17.29)
-        self.slider_exp = DoubleSlider(8.982, 114912.8)
-        self.slider_gain = DoubleSlider(1.0, 4.0)
+        # # Remove QSliders, replace with DoubleSliders
+        # self.slider_fps = DoubleSlider(0.5, 17.29)
+        # self.slider_exp = DoubleSlider(8.982/1000, 114912.8/1000)
+        # self.slider_gain = DoubleSlider(1.0, 4.0)
 
         layout = self.settings_dialog.gridLayout_brightness
 
-        row, col, rowSpan, colSpan = layout.getItemPosition(layout.indexOf(self.settings_dialog.slider_fps))
-        layout.addWidget(self.slider_fps, row, col, rowSpan, colSpan)
-        layout.removeWidget(self.settings_dialog.slider_fps)
-        self.settings_dialog.slider_fps.deleteLater()
+        # row, col, rowSpan, colSpan = layout.getItemPosition(layout.indexOf(self.settings_dialog.slider_fps))
+        # layout.addWidget(self.slider_fps, row, col, rowSpan, colSpan)
+        # layout.removeWidget(self.settings_dialog.slider_fps)
+        # self.settings_dialog.slider_fps.deleteLater()
+        #
+        # row, col, rowSpan, colSpan = layout.getItemPosition(layout.indexOf(self.settings_dialog.slider_exp))
+        # layout.addWidget(self.slider_exp, row, col, rowSpan, colSpan)
+        # layout.removeWidget(self.settings_dialog.slider_exp)
+        # self.settings_dialog.slider_exp.deleteLater()
+        #
+        # row, col, rowSpan, colSpan = layout.getItemPosition(layout.indexOf(self.settings_dialog.slider_gain))
+        # layout.addWidget(self.slider_gain, row, col, rowSpan, colSpan)
+        # layout.removeWidget(self.settings_dialog.slider_gain)
+        # self.settings_dialog.slider_gain.deleteLater()
 
-        row, col, rowSpan, colSpan = layout.getItemPosition(layout.indexOf(self.settings_dialog.slider_exp))
-        layout.addWidget(self.slider_exp, row, col, rowSpan, colSpan)
-        layout.removeWidget(self.settings_dialog.slider_exp)
-        self.settings_dialog.slider_exp.deleteLater()
-
-        row, col, rowSpan, colSpan = layout.getItemPosition(layout.indexOf(self.settings_dialog.slider_gain))
-        layout.addWidget(self.slider_gain, row, col, rowSpan, colSpan)
-        layout.removeWidget(self.settings_dialog.slider_gain)
-        self.settings_dialog.slider_gain.deleteLater()
-
-        # Update links
-        self.settings_dialog.slider_fps = self.slider_fps
-        self.settings_dialog.slider_exp = self.slider_exp
-        self.settings_dialog.slider_gain = self.slider_gain
+        # # Update links
+        # self.settings_dialog.slider_fps = self.slider_fps
+        # self.settings_dialog.slider_exp = self.slider_exp
+        # self.settings_dialog.slider_gain = self.slider_gain
 
         # Group Image Transformation
         self.settings_dialog.rotate_left_button.clicked.connect(self.on_rotate_left_clicked)
@@ -239,9 +239,9 @@ class CameraTab(DeviceTab):
         self.settings_dialog.mirror_left_right.clicked.connect(self.on_mirror_lr_clicked)
 
         # Sync sliders and spinboxs
-        self.sync_slider_spin(self.settings_dialog.slider_fps, self.settings_dialog.spin_fps, self.on_fps_changed)
-        self.sync_slider_spin(self.settings_dialog.slider_exp, self.settings_dialog.spin_exp, self.on_exposure_changed)
-        self.sync_slider_spin(self.settings_dialog.slider_gain, self.settings_dialog.spin_gain, self.on_gain_changed)
+        # self.sync_slider_spin(self.settings_dialog.slider_fps, self.settings_dialog.spin_fps, self.on_fps_changed)
+        # self.sync_slider_spin(self.settings_dialog.slider_exp, self.settings_dialog.spin_exp, self.on_exposure_changed)
+        # self.sync_slider_spin(self.settings_dialog.slider_gain, self.settings_dialog.spin_gain, self.on_gain_changed)
 
         self.sync_slider_spin(self.settings_dialog.offset_x_slider, self.settings_dialog.offset_x, self.on_roi_changed)
         self.sync_slider_spin(self.settings_dialog.offset_y_slider, self.settings_dialog.offset_y, self.on_roi_changed)
@@ -257,7 +257,7 @@ class CameraTab(DeviceTab):
         self.settings_dialog.offset_y_slider.setSingleStep(1)
         self.settings_dialog.offset_y.setRange(0, 1024)
 
-        self.settings_dialog.width_slider.setRange(16, 1280) # update dynamically according to offset values todo
+        self.settings_dialog.width_slider.setRange(16, 1280)
         self.settings_dialog.width_slider.setSingleStep(1)
         self.settings_dialog.width.setRange(16, 1280)
 
@@ -272,9 +272,9 @@ class CameraTab(DeviceTab):
         self.settings_dialog.spin_fps.setValue(10.0)
         self.settings_dialog.spin_exp.setValue(5000.0)
         self.settings_dialog.spin_gain.setValue(2.0)
-        self.slider_fps.setValue(self.settings_dialog.spin_fps.value())
-        self.slider_exp.setValue(self.settings_dialog.spin_exp.value())
-        self.slider_gain.setValue(self.settings_dialog.spin_gain.value())
+        # self.slider_fps.setValue(self.settings_dialog.spin_fps.value())
+        # self.slider_exp.setValue(self.settings_dialog.spin_exp.value())
+        # self.slider_gain.setValue(self.settings_dialog.spin_gain.value())
 
     def sync_slider_spin(self, slider, spinbox, callback, ):
         """Sync QSlider and QSpinBox in both directions.
@@ -345,7 +345,7 @@ class CameraTab(DeviceTab):
     @define_state(MODE_MANUAL, queue_state_indefinitely=True, delete_stale_states=True)
     def on_freerun_framerate_clicked(self, button):
         frame_rate =  self.ui.frame_rate_spin.value()
-        yield (self.queue_work(self.primary_worker, 'freerun_conf', [frame_rate])) #todo: persistent frame_rate across modes
+        yield (self.queue_work(self.primary_worker, 'freerun_conf', [frame_rate]))
 
     def on_freerun_clicked(self, button):
         self.update_snap_button_state()
@@ -369,7 +369,7 @@ class CameraTab(DeviceTab):
         # Disable start, enable stop
         self.ui.start_acquisition_button.setEnabled(False)
         self.ui.stop_acquisition_button.setEnabled(True)
-        yield (self.queue_work(self.primary_worker, 'start_acquisition'))
+        yield (self.queue_work(self.primary_worker, 'start_freerun_acquisition'))
 
     @define_state(MODE_MANUAL, queue_state_indefinitely=True, delete_stale_states=True)
     def on_stop_acquisition_clicked(self, button):

@@ -30,11 +30,11 @@ class IDSCamera(TriggerableDevice):
             ],
         }
     )
-    def __init__(self, name, parent_device=None, connection=None, serial_number="4104380609", exposure_time=None, roi=None, frame_rate=None, gain=None, camera_setting="Default", **kwargs):
+    def __init__(self, name, parent_device=None, connection=None, serial_number="4104380609", exposure_time_ms=None, roi=None, frame_rate=None, gain=None, camera_setting="Default", **kwargs):
         super().__init__(name, parent_device, connection, **kwargs)
         self.serial_number = serial_number
 
-        self.exposure_time = exposure_time
+        self.exposure_time = exposure_time_ms
         self.frame_rate = frame_rate
         self.gain = gain
         self.roi = roi

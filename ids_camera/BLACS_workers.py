@@ -1,4 +1,5 @@
 import queue
+import threading
 import time
 
 from blacs.tab_base_classes import Worker
@@ -11,6 +12,7 @@ from .camera import Camera, TriggerWorker
 from ids_peak import ids_peak
 from qtutils.qt.QtGui import QImage
 from datetime import datetime as dt
+import numpy as np
 
 import zmq
 import labscript_utils
@@ -48,11 +50,15 @@ class CameraWorker(Worker):
         self.start_acquisition()
         self.worker.start()
 
+    def set_auto(self):
+        self.camera.set_auto()
+
+
     def set_4_parameters(self):
         print(f"[DEBUG] 4 Parameters: (roi, gain, frame_rate, exp_time) = ({self.roi, self.gain, self.frame_rate, self.exposure_time})")
         if self.roi is not None and self.roi.size == 4:
             x, y, width, height = self.roi  # np.ndarray unpacking
-            self.set_roi(int(x), int(y), int(width), int(height))
+            self.set_roi((int(x), int(y), int(width), int(height)))
 
         if self.gain is not None:
             self.set_gain(float(self.gain))
@@ -186,28 +192,45 @@ class CameraWorker(Worker):
         self.camera.init_freerun(frame_rate)
         print(f"Configure to freerun")
         self.trigger_mode = "Freerun"
-        self.worker.keep_image = False
 
-        # Grab image from TriggerWorker
-        try:
-            ipl_image = self.worker.image_queue.get(timeout=10)
-            # Pass image to GUI
-            np_array = self.camera.ipl2numpy(ipl_image)
-            self._send_to_gui(np_array)
-        except queue.Empty:
-            print("Timeout waiting for image from worker!")
-            return
+
+    def start_freerun_acquisition(self):
+        self.start_acquisition()
+        self.worker.keep_image = False
+        def freerun_thread():
+            while self.camera.acquisition_running:
+                # Grab image from TriggerWorker
+                try:
+                    self.worker.keep_image = False
+                    ipl_image = self.worker.image_queue.get(timeout=2)
+                    # Pass image to GUI
+                    np_array = self.camera.ipl2numpy(ipl_image)
+                    self._send_to_gui(np_array)
+                except queue.Empty:
+                    print("Timeout waiting for image from worker!")
+                    return
+        self.freerun = threading.Thread(target=freerun_thread, daemon=True)
+        self.freerun.start()
 
     def set_fps(self, frame_rate):
-        fps = frame_rate[0]
+        if isinstance(frame_rate, list) or isinstance(frame_rate, np.ndarray):
+            fps = frame_rate[0]
+        else:
+            fps = frame_rate
         self.camera.set_frame_rate(fps)
 
     def set_exposure(self, exposure):
-        exp = exposure[0]
+        if isinstance(exposure, list) or isinstance(exposure, np.ndarray):
+            exp = exposure[0]
+        else:
+            exp = exposure
         self.camera.set_exposure_time(exp)
 
     def set_gain(self, gain):
-        g = gain[0]
+        if isinstance(gain, list) or isinstance(gain, np.ndarray):
+            g = gain[0]
+        else:
+            g = gain
         self.camera.set_gain(g)
 
     def set_roi(self, roi):
