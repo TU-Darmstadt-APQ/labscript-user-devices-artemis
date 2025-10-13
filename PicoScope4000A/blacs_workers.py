@@ -36,8 +36,7 @@ class PicoScopeWorker(Worker):
         if getattr(self.pico, "fetcher_thread", None) is not None:
             self.fetcher_thread.join(timeout=1.0)
         if getattr(self, "writer_thread", None) is not None:
-            self.writer_thread.join(timeout=2.0)
-
+            self.writer_thread.join(timeout=1.0)
 
     def program_manual(self, front_panel_values):
         pass
@@ -57,12 +56,14 @@ class PicoScopeWorker(Worker):
 
         # Configure Trigger
         if self.simple_trigger:
-            self.pico.set_simple_edge_trigger(self.simple_trigger["enabled"],
+            self.pico.set_simple_edge_trigger(
                                               self.simple_trigger["source"],
                                               self.simple_trigger["threshold"],
                                               self.simple_trigger["direction"],
                                               self.simple_trigger["delay"],
-                                              self.simple_trigger["autoTrigger_ms"])
+                                              self.simple_trigger["autoTrigger_ms"],
+                                            # self.simple_trigger["enabled"],
+            )
 
         if self.trigger_conditions:
             for cond in self.trigger_conditions:
@@ -78,27 +79,6 @@ class PicoScopeWorker(Worker):
             self.pico.set_trigger_delay(self.trigger_delay["delay"])
 
         print(f"[DEBUG] the pico status = {self.pico.status}")
-        # Configure active mode
-        if self.active_mode == "stream" and self.stream_config:
-            self.pico.run_stream(
-                self.stream_config["sampleInterval"],
-                self.stream_config["noPreTriggerSamples"],
-                self.stream_config["noPostTriggerSamples"],
-                self.stream_config["autoStop"],
-                self.stream_config["downSampleRatio"],
-                self.stream_config["downSampleRatioMode"],
-            )
-
-        if self.active_mode == "block" and self.block_config:
-            self.pico.run_block(
-                self.block_config["noPreTriggerSamples"],
-                self.block_config["noPostTriggerSamples"],
-                self.block_config["sampleInterval"]
-            )
-
-        if self.active_mode == "rapid" and self.rapid_config:
-            #todo:
-            self.pico.run_rapid()
 
         # Configure Sig gen
         if self.siggen_config:
@@ -119,6 +99,24 @@ class PicoScopeWorker(Worker):
                 self.siggen_config["extInThreshold"],
             )
 
+        # Configure active mode
+        if self.active_mode == "stream" and self.stream_config:
+            self.pico.run_stream(
+                self.stream_config["sampleInterval"],
+                # self.stream_config["noPreTriggerSamples"],
+                self.stream_config["noPostTriggerSamples"],
+                # self.stream_config["autoStop"],
+                self.stream_config["downSampleRatio"],
+                self.stream_config["downSampleRatioMode"],
+            )
+
+        if self.active_mode == "block" and self.block_config:
+            self.pico.run_block(
+                self.block_config["noPreTriggerSamples"],
+                self.block_config["noPostTriggerSamples"],
+                self.block_config["sampleInterval"]
+            )
+
         # Create dataset for streaming samples:
         rows = self.pico.total_samples
         cols = sum(self.pico.enabled_channels)
@@ -130,6 +128,7 @@ class PicoScopeWorker(Worker):
 
             ds = group.create_dataset("StreamSamples", shape=(rows, cols), dtype=np.float32)
             ds.attrs["channel_names"] = [f"CH{ch}" for ch, enabled in enumerate(self.pico.enabled_channels) if enabled == 1]
+            ds.attrs["sample_interval"] = self.pico.actual_sample_interval # todo?
 
         self.writer = threading.Thread(target=self.h5_writer_thread, daemon=True)
         self.writer.start()
@@ -149,8 +148,10 @@ class PicoScopeWorker(Worker):
             ds = f[f"/devices/{self.device_name}/StreamSamples"]
 
             while not self._stop_threads: # run till all samples collected
+
                 try:
                     start, data2d = self.pico.h5_queue.get(timeout=0.5)
+
                 except queue.Empty:
                     continue
 
@@ -167,11 +168,13 @@ class PicoScopeWorker(Worker):
                 # Save data
                 data_mV = self.pico.adc2mv(data2d)
                 ds[start:end, :] = data_mV.astype(ds.dtype)
-                # ds[start:end, :] = data2d.astype(ds.dtype)
 
+                if end == self.pico.total_samples:
+                    ds.attrs['trigger_at'] = int(self.pico.triggered_at)
 
-                if end == self.pico.total_samples: break
-            print(f"[DEBUG] triggeredAt = {self.pico.triggered_at}")
+                    break
+
+            print(f"\n [INFO] All {self.pico.total_samples} data samples have been collected and written to the hdf5 file.")
             f.flush()
 
     def abort_transition_to_buffered(self):
@@ -179,6 +182,9 @@ class PicoScopeWorker(Worker):
 
     def abort_buffered(self):
         return self.abort_transition_to_buffered()
+
+    def siggen_software_trigger(self):
+        self.pico.siggen_software_control(0)
 
 BLUE = '#66D9EF'
 
@@ -207,7 +213,8 @@ class PicoScope:
         # Open device
         self.open_unit(serial_number)
 
-        self.maxADC = ctypes.c_int32(32767)
+        self.maxADC = ctypes.c_int32()
+        self.status["maximumValue"] = ps.ps4000aMaximumValue(self.chandle, ctypes.byref(self.maxADC))
         self.actual_sample_interval = None
         self.next_sample = 0
         self.auto_stop = False
@@ -364,7 +371,6 @@ class PicoScope:
         self.status[f"setDataBuffer_{channel}"] = ps.ps4000aSetDataBuffer(self.chandle, channel, ptr, bufferLth,
                                                                segmentIndex, mode)
         assert_pico_ok(self.status[f"setDataBuffer_{channel}"])
-        print(f"[DEBUG] Set Buffers status: {self.status[f"setDataBuffer_{channel}"]}")
 
     def set_max_min_data_buffers(self, channel:int, bufferMax, bufferMin, bufferLth:int, segmentIndex:int, mode: int):
         """
@@ -385,9 +391,9 @@ class PicoScope:
 
     def run_stream(self,
                    sampleInterval_ns: int,
-                   maxPreTriggerSamples: int,
+                   # maxPreTriggerSamples: int,
                    maxPostTriggerSamples: int,
-                   autoStop: int = 1,  # stop after all samples collected
+                   # autoStop: int = 0,  # dont stop after all samples collected
                    downSampleRatio: int = 1,  # default no downsampling
                    downSampleRatioMode: str='none',
                    ):
@@ -408,15 +414,16 @@ class PicoScope:
         :param downSampleRatioMode:
         :return:
         """
-        # fixme: Starts sampling even without trigger
         # prepare arguments
+        autoStop = 0 # dont stop after all samples collected
         c_sampleInterval = ctypes.c_int32(sampleInterval_ns)
         timeUnits = ps.PS4000A_TIME_UNITS['PS4000A_NS']  # Nanoseconds
         downSampleRatioMode_int = _get_ratio_mode(downSampleRatioMode)
 
         # Define buffers
+        maxPreTriggerSamples = 0
         self.total_samples = maxPreTriggerSamples + maxPostTriggerSamples
-        buffer_size = 500
+        buffer_size = 1000
         overviewBufferSize = buffer_size
 
         # Allocate and register working buffers for enabled channels
@@ -442,33 +449,31 @@ class PicoScope:
                         mode=downSampleRatioMode_int
                     )
 
-        # Configure streaming sampling mode
+        # Configure and run streaming sampling mode
         self.status["runStreaming"] = ps.ps4000aRunStreaming(
             self.chandle, ctypes.byref(c_sampleInterval), timeUnits, maxPreTriggerSamples,
             maxPostTriggerSamples, autoStop, downSampleRatio, downSampleRatioMode_int, overviewBufferSize)
         assert_pico_ok(self.status["runStreaming"])
 
-        print(f"[DEBUG] Run Stream status: {self.status["runStreaming"]}")
-
         self.actual_sample_interval = c_sampleInterval.value
-        print(f"[DEBUG] Sample Interval {sampleInterval_ns} -> {self.actual_sample_interval}")
+        print(f"[INFO] Sample Interval {sampleInterval_ns} -> {self.actual_sample_interval}")
 
         # Prepare callback
         self.next_sample = 0
         self.auto_stop_outer = False
         self.was_called_back = False
+        self.was_triggered = False
 
         def streaming_callback(handle, noOfSamples, startIndex, overflow, triggerAt, triggered, autoStop, param):
             """
             This callback function receives a notification when streaming-mode data is ready.
-            Your callback function should do nothing more than copy the data to another buffer within your
-            application. To maintain the best application performance, the function should return as quickly as
-            possible without attempting to process or display the data
+            We put the colleted after trigger data into queue, to save it into hdf5file in another thread to not block the data streaming.
+
             :param handle:
             :param noOfSamples: The number of samples to collect.
             :param startIndex: an index to the first valid sample in the working buffer
             :param overflow: returns a set of flags that indicate whether an overvoltage has occurred on any of the channels.
-            :param triggerAt: an index to the buffer indicating the location of the trigger point relative to startIndex.
+            :param triggerAt: trigger index relative to the start index in the buffer.
                 This parameter is valid only when triggered is non-zero.
             :param triggered: a flag indicating whether a trigger occurred. If non-zero, a trigger occurred at the location indicated by triggerAt
             :param autoStop:  the flag that was set in the call to ps4000aRunStreaming()
@@ -476,43 +481,53 @@ class PicoScope:
                 location to send any data, such as a status flag, back to the application.
             :return:
             """
-            print(f"[DEBUG] Stream was called back... !!")
-            self.stop_h5_writer = False
-            start_sample = self.next_sample
-            self.was_called_back = True
-            blocks = [
-                self.buffers[ch][startIndex:startIndex + noOfSamples].astype(np.int16).copy()
-                for ch, enabled in enumerate(self.enabled_channels)
-                if enabled == 1
-            ]
-            data2d = np.stack(blocks, axis=1)  # shape (noOfSamples, n_channels)
 
-            try:
-                self.h5_queue.put_nowait((start_sample, data2d))
-                self.next_sample += noOfSamples
-                # print(f"[DEBUG] Data pushed to queue: start_sample={start_sample}, end_sample={start_sample + noOfSamples}")
-            except queue.Full:
-                self.next_sample += noOfSamples
-                print(f"[DEBUG] Queue full! Dropping data: start_sample={start_sample}, end_sample={start_sample + noOfSamples}")
-                pass
+            if triggered != 0:
+                self.was_triggered = True
+                self.triggered_at = self.next_sample + triggerAt
+                print(f"[DEBUG] Was triggered at {self.triggered_at}. ")
 
-            self.triggered_at = triggerAt # DEBUG
-            if autoStop:
-                self.auto_stop_outer = True
+            if self.was_triggered:
+                start_sample = self.next_sample
+                self.was_called_back = True
+                blocks = [
+                    self.buffers[ch][startIndex:startIndex + noOfSamples].astype(np.int16).copy()
+                    for ch, enabled in enumerate(self.enabled_channels)
+                    if enabled == 1
+                ]
+                data2d = np.stack(blocks, axis=1)  # shape (noOfSamples, n_enabled_channels)
+
+                try:
+                    self.h5_queue.put_nowait((start_sample, data2d))
+                    self.next_sample += noOfSamples
+
+                except queue.Full:
+                    self.next_sample += noOfSamples
+                    print(f"[DEBUG] Queue full! Dropping data: start_sample={start_sample}, end_sample={start_sample + noOfSamples}")
+                    pass
+
+                if autoStop != 0:
+                    self.auto_stop_outer = True
 
         self.c_lpReady = ps.StreamingReadyType(streaming_callback)
 
 
         def fetching_thread():
+            print(f"[INFO] Start Fetcher. ")
             while self.next_sample < self.total_samples and not self.auto_stop_outer and not self._stop_threads:
-                self.was_called_back = False
-                self.status["getStreamingValues"] = ps.ps4000aGetStreamingLatestValues(self.chandle, self.c_lpReady, None)
-                assert_pico_ok(self.status["getStreamingValues"])
+                try:
+                    self.was_called_back = False
+                    self.status["getStreamingValues"] = ps.ps4000aGetStreamingLatestValues(self.chandle, self.c_lpReady, None)
+                except ps.PicoSDKCtypesError as e:
+                    if "PICO_BUSY" in str(e):
+                        time.sleep(0.01)
+                    else:
+                        raise
 
                 if not self.was_called_back:
                     time.sleep(0.01)
 
-            print(f"[DEBUG] Fetcher thread finished...")
+            print(f"[WARNING] Fetcher thread is finished... No more data is being collected.")
             self.stop_h5_writer = True
 
         # Start a thread to register callback and fetch data
@@ -673,12 +688,12 @@ class PicoScope:
 
 
     def set_simple_edge_trigger(self,
-                                enable: int,  # 0 = disable
                                 source: str,
                                 threshold: float,  # in milliVolts
                                 direction: str,
                                 delay: int, # in sample periods
-                                autoTrigger_ms: int = 0
+                                autoTrigger_ms: int = 0,
+                                enable: int = 1,  # 0 = disable
                                 ):
         """
         Arms the trigger. Trigger type = LEVEL. Only one channel. Starts acquisition.
@@ -690,7 +705,7 @@ class PicoScope:
         :param autoTrigger_ms: trigger timeout in ms, 0 = infinite
         :return:
         """
-        print(f"DEBUG: simple trigger enable = {enable} for source {source}")
+        print(f"[DEBUG] trigger threshold = {threshold}. ")
         # Convert millivolts into ADC count (threshold)
         source_int = _get_channel_number(source)
         direction_int = _get_direction(direction)
@@ -708,7 +723,7 @@ class PicoScope:
     def gen_signal(self,
                    offsetVoltage: int = 1000000,  # in µV
                    pkToPk:int=2000000,  # in µV
-                   wavetype: int = 1,
+                   wavetype: str='square',
                    startFrequency: float = 10000,  # in Hz
                    stopFrequency: float = 10000,  # in Hz (same = no sweep)
                    increment: float = 0,  # Hz step in sweep
@@ -717,8 +732,8 @@ class PicoScope:
                    operation: int = 0,
                    shots: int = 0,
                    sweeps: int = 0,
-                   triggertype: int = 0,
-                   triggersource: int = 1,
+                   triggertype: str = 'rising',
+                   triggersource: str = 'soft_trig',
                    extInThreshold: int = 0  # ADC counts
                    ):
 
@@ -743,12 +758,15 @@ class PicoScope:
         :param extInThreshold: Threshold level for external trigger (in ADC counts).
         :return:
         """
+        wavetype_int = _get_wave_type(wavetype)
+        triggersource_int = _get_siggen_trigger_source(triggersource)
+        triggertype_int = _get_siggen_trigger_type(triggertype)
 
-        self.status["SetSigGenBuiltIn"] = ps.ps4000aSetSigGenBuiltIn(self.chandle, offsetVoltage, pkToPk, wavetype,
+        self.status["SetSigGenBuiltIn"] = ps.ps4000aSetSigGenBuiltIn(self.chandle, offsetVoltage, pkToPk, wavetype_int,
                                                                      startFrequency, stopFrequency,
                                                                      increment, dwelltime, sweeptype, operation, shots,
-                                                                     sweeps, triggertype,
-                                                                     triggersource, extInThreshold)
+                                                                     sweeps, triggertype_int,
+                                                                     triggersource_int, extInThreshold)
         assert_pico_ok(self.status["SetSigGenBuiltIn"])
 
     def siggen_software_control(self, state):

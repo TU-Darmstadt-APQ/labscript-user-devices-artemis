@@ -2,14 +2,14 @@
 # Copyright (C) 2018-2019 Pico Technology Ltd. See LICENSE file for terms.
 #
 # PS2000 Series (A API) STREAMING MODE EXAMPLE
-# This example demonstrates how to call the ps4000A driver API functions in order to open a device, setup 2 channels and collects streamed data (1 buffer).
+# This example demonstrates how to call the ps4000A driver API functions in order to open a device, setup 2 channels and collects streamed data (1 buffer) given trigger.
 # This data is then plotted as mV against time in ns.
 
 import ctypes
 import numpy as np
 from picosdk.ps4000a import ps4000a as ps
 import matplotlib.pyplot as plt
-from picosdk.functions import adc2mV, assert_pico_ok
+from picosdk.functions import adc2mV, assert_pico_ok, mV2adc
 import time
 
 # Create chandle and status ready for use
@@ -74,6 +74,7 @@ sizeOfOneBuffer = 500
 numBuffersToCapture = 20
 
 totalSamples = sizeOfOneBuffer * numBuffersToCapture
+totalSamples_stream = totalSamples
 
 # Create buffers ready for assigning pointers for data collection
 bufferAMax = np.zeros(shape=sizeOfOneBuffer, dtype=np.int16)
@@ -115,19 +116,36 @@ status["setDataBuffersB"] = ps.ps4000aSetDataBuffers(chandle,
                                                      ps.PS4000A_RATIO_MODE['PS4000A_RATIO_MODE_NONE'])
 assert_pico_ok(status["setDataBuffersB"])
 
+# Find maximum ADC count value
+# handle = chandle
+# pointer to value = ctypes.byref(maxADC)
+maxADC = ctypes.c_int16()
+status["maximumValue"] = ps.ps4000aMaximumValue(chandle, ctypes.byref(maxADC))
+assert_pico_ok(status["maximumValue"])
+
+threshold = mV2adc(0, channel_range, maxADC)
+status["SimpleTrigger"] = ps.ps4000aSetSimpleTrigger(chandle,
+                                                     1,
+                                                     0, # ps.PS4000A_CHANNEL['PS4000A_CHANNEL_A'],
+                                                     threshold,
+                                                     ps.PS4000A_THRESHOLD_DIRECTION['PS4000A_RISING'],
+                                                     0,
+                                                     0)
+print(f"Arming trigger {status["SimpleTrigger"]}")
+
 # Begin streaming mode:
 sampleInterval = ctypes.c_int32(250)
 sampleUnits = ps.PS4000A_TIME_UNITS['PS4000A_US']
 # We are not triggering:
 maxPreTriggerSamples = 0
-autoStopOn = 1
+autoStopOn = 0
 # No downsampling:
 downsampleRatio = 1
 status["runStreaming"] = ps.ps4000aRunStreaming(chandle,
                                                 ctypes.byref(sampleInterval),
                                                 sampleUnits,
                                                 maxPreTriggerSamples,
-                                                totalSamples,
+                                                totalSamples_stream,
                                                 autoStopOn,
                                                 downsampleRatio,
                                                 ps.PS4000A_RATIO_MODE['PS4000A_RATIO_MODE_NONE'],
@@ -146,18 +164,22 @@ nextSample = 0
 autoStopOuter = False
 wasCalledBack = False
 
-
+was_triggered = 0
 def streaming_callback(handle, noOfSamples, startIndex, overflow, triggerAt, triggered, autoStop, param):
-    global nextSample, autoStopOuter, wasCalledBack
+    global nextSample, autoStopOuter, wasCalledBack, was_triggered
     wasCalledBack = True
-    destEnd = nextSample + noOfSamples
-    sourceEnd = startIndex + noOfSamples
-    bufferCompleteA[nextSample:destEnd] = bufferAMax[startIndex:sourceEnd]
-    bufferCompleteB[nextSample:destEnd] = bufferBMax[startIndex:sourceEnd]
-    nextSample += noOfSamples
-    if autoStop:
-        autoStopOuter = True
-
+    if triggered != 0:
+        print(f"trigger occurred: {triggered} ->  TriggeredAT : {triggerAt}")
+        was_triggered = 1
+    if was_triggered == 1:
+        destEnd = nextSample + noOfSamples
+        sourceEnd = startIndex + noOfSamples
+        print(f"complete = {destEnd-nextSample}, working = {sourceEnd-startIndex}")
+        bufferCompleteA[nextSample:destEnd] = bufferAMax[startIndex:sourceEnd]
+        bufferCompleteB[nextSample:destEnd] = bufferBMax[startIndex:sourceEnd]
+        nextSample += noOfSamples
+        if autoStop:
+            autoStopOuter = True
 
 # Convert the python function into a C function pointer.
 cFuncPtr = ps.StreamingReadyType(streaming_callback)
@@ -172,13 +194,6 @@ while nextSample < totalSamples and not autoStopOuter:
         time.sleep(0.01)
 
 print("Done grabbing values.")
-
-# Find maximum ADC count value
-# handle = chandle
-# pointer to value = ctypes.byref(maxADC)
-maxADC = ctypes.c_int16()
-status["maximumValue"] = ps.ps4000aMaximumValue(chandle, ctypes.byref(maxADC))
-assert_pico_ok(status["maximumValue"])
 
 # Convert ADC counts data to mV
 adc2mVChAMax = adc2mV(bufferCompleteA.astype(np.int32) , channel_range, maxADC)

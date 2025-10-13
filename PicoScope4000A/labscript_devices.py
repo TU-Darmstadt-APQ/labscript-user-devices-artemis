@@ -69,7 +69,7 @@ class PicoScope4000A(Device):
     def add_device(self, device):
         Device.add_device(self, device)
 
-    def set_simple_trigger(self, enabled:int, source:str, threshold_mV:int, direction="rising", delay_samples:int=0, autoTrigger_ms:int=0):
+    def set_simple_trigger(self, source:str, threshold_mV:int, direction="rising", delay_samples:int=0, autoTrigger_ms:int=0):
         """
         Simple edge trigger.
 
@@ -81,7 +81,7 @@ class PicoScope4000A(Device):
         :param delay_samples: the time, in sample periods, between the trigger occurring and the first sample being taken.
         :param autoTrigger_ms: the number of milliseconds the device will wait if no trigger occurs. If 0, wait infinitely
         """
-        self.simple_trigger_config.update(dict(enabled=enabled, source=source, threshold=threshold_mV, direction=direction, delay=delay_samples, autoTrigger_ms=autoTrigger_ms))
+        self.simple_trigger_config.update(dict(source=source, threshold=threshold_mV, direction=direction, delay=delay_samples, autoTrigger_ms=autoTrigger_ms))
 
     def set_trigger_conditions(self, sources, info:str):
         #fixme:  PicoSDK returned 'PICO_CONDITIONS' by 'pulse_width' source
@@ -129,8 +129,8 @@ class PicoScope4000A(Device):
                                                    upper_hysteresis=thresholdUpperHysteresis_mV,
                                                    lower_hysteresis=thresholdLowerHysteresis_mV,
                                                    source=source, threshold_mode=thresholdMode))
-    #
-    #
+
+
     # def set_block_sampling(self, noPreTriggerSamples:int, noPostTriggerSamples:int, sampleInterval_ns:float):
     #     """
     #     In block mode, the computer prompts a PicoScope to collect a block of data
@@ -154,79 +154,81 @@ class PicoScope4000A(Device):
     #                                    postTriggerSamples=noPostTriggerSamples,
     #                                    sampleInterval=sampleInterval_ns,
     #                                    noSegments=noSegments))
-    #
+
+
     def set_stream_sampling(self,
                             sampleInterval_ns:int, # in ns
-                            noPreTriggerSamples:int,
+                            # noPreTriggerSamples:int,
                             noPostTriggerSamples:int,
-                            autoStop:int=1,  # default stop after all samples collected
+                            autoStop:int=0,  # default stop after all samples collected
                             downSampleRatio:int=1, # default no downsampling
                             downSampleRatioMode:str='none', # default no downsampling
                             ):
 
-        self.stream_config.update(dict(sampleInterval=sampleInterval_ns,noPreTriggerSamples=noPreTriggerSamples,
+        self.stream_config.update(dict(sampleInterval=sampleInterval_ns,
+                                       # noPreTriggerSamples=noPreTriggerSamples,
                              noPostTriggerSamples=noPostTriggerSamples, autoStop=autoStop, downSampleRatio=downSampleRatio,
                              downSampleRatioMode=downSampleRatioMode))
 
-    # def signal_generator_config(self,
-    #                             offsetVoltage_us:int,
-    #                             pkToPk_us:int,
-    #                             wavetype: str,
-    #                             startFrequency: float=10000, # in Hz
-    #                             stopFrequency: float=10000, # in Hz (same = no sweep)
-    #                             increment: float=0, # Hz step in sweep
-    #                             dwelltime: float=1, # seconds per step
-    #                             sweeptype: int=0,
-    #                             operation: int=0,
-    #                             shots: int=0,
-    #                             sweeps: int=0,
-    #                             triggertype: str='rising',
-    #                             triggersource: str='soft_trig',
-    #                             extInThreshold: int=0 # ADC counts, not used?
-    #                         ):
-    #     """
-    #     Configure the built-in signal generator for PicoScope 4000/4824 series.
-    #
-    #     This method sets up a waveform, frequency sweep, and trigger options.
-    #     Call this before starting data acquisition, even if using a trigger.
-    #
-    #     :param offsetVoltage_us: Voltage offset in microvolts to apply to the waveform.
-    #     :param pkToPk_us:  Peak-to-peak voltage in microvolts.
-    #     :param wavetype:  Waveform type. Allowed:
-    #     ['sine', 'square', 'triangle', 'ramp_up', 'ramp_down',
-    #      'sinc', 'gaussian', 'half_sine', 'dc_voltage', 'white_noise']
-    #     :param startFrequency:  Frequency in Hz at which the waveform starts.
-    #     :param stopFrequency:         Frequency in Hz at which sweep reverses or resets.
-    #     :param increment:         Frequency step in Hz for sweep mode.
-    #     :param dwelltime:         Seconds per frequency step in sweep mode.
-    #     :param sweeptype:         PicoScope sweep type (enum).
-    #     :param operation:
-    #     :param shots:         Number of waveform shots (0 = continuous).
-    #     :param sweeps:        Number of sweeps (0 = infinite).
-    #     :param triggertype:        Trigger edge type. Allowed: ['rising', 'falling', 'gate_high', 'gate_low']
-    #     :param triggersource:        Trigger source. Allowed: ['none', 'scope_trig', 'aus_in', 'ext_in', 'soft_trig']
-    #     :param extInThreshold: External input threshold in ADC counts.
-    #     :return:
-    #     """
-    #
-    #     wave_types = ['sine', 'square', 'triangle', 'ramp_up', 'ramp_down', 'sinc', 'gaussian', 'half_sine',
-    #                   'dc_voltage', 'white_noise', 'max_wave_types']
-    #     trig_types = ['rising', 'falling', 'gate_high', 'gate_low']
-    #     trig_sources = ['none', 'scope_trig', 'aus_in', 'ext_in', 'soft_trig']
-    #
-    #     if wavetype not in wave_types:
-    #         raise ValueError(f"Invalid wavetype: {wavetype}. Allowed values: {wave_types}")
-    #     if triggertype not in trig_types:
-    #         raise ValueError(f"Invalid triggertype: {triggertype}. Allowed values: {trig_types}")
-    #     if triggersource not in trig_sources:
-    #         raise ValueError(f"Invalid triggersource: {triggersource}. Allowed values: {trig_sources}")
-    #
-    #
-    #     self.siggen_config.update(dict(offsetVoltage=offsetVoltage_us, pkToPk=pkToPk_us, wavetype=wavetype,
-    #                               startFrequency=startFrequency, stopFrequency=stopFrequency,
-    #                               increment=increment, dwelltime=dwelltime, sweeptype=sweeptype,
-    #                               operation=operation, shots=shots, sweeps=sweeps,triggertype=triggertype,
-    #                               triggersource=triggersource, extInThreshold=extInThreshold))
+    def signal_generator_config(self,
+                                offsetVoltage_us:int,
+                                pkToPk_us:int,
+                                wavetype: str,
+                                startFrequency: float=10000, # in Hz
+                                stopFrequency: float=10000, # in Hz (same = no sweep)
+                                increment: float=0, # Hz step in sweep
+                                dwelltime: float=1, # seconds per step
+                                sweeptype: int=0,
+                                operation: int=0,
+                                shots: int=0,
+                                sweeps: int=0,
+                                triggertype: str='rising',
+                                triggersource: str='soft_trig',
+                                extInThreshold: int=0 # ADC counts, not used?
+                            ):
+        """
+        Configure the built-in signal generator for PicoScope 4000/4824 series.
+
+        This method sets up a waveform, frequency sweep, and trigger options.
+        Call this before starting data acquisition, even if using a trigger.
+
+        :param offsetVoltage_us: Voltage offset in microvolts to apply to the waveform.
+        :param pkToPk_us:  Peak-to-peak voltage in microvolts.
+        :param wavetype:  Waveform type. Allowed:
+        ['sine', 'square', 'triangle', 'ramp_up', 'ramp_down',
+         'sinc', 'gaussian', 'half_sine', 'dc_voltage', 'white_noise']
+        :param startFrequency:  Frequency in Hz at which the waveform starts.
+        :param stopFrequency:         Frequency in Hz at which sweep reverses or resets.
+        :param increment:         Frequency step in Hz for sweep mode.
+        :param dwelltime:         Seconds per frequency step in sweep mode.
+        :param sweeptype:         PicoScope sweep type (enum).
+        :param operation:
+        :param shots:         Number of waveform shots (0 = continuous).
+        :param sweeps:        Number of sweeps (0 = infinite).
+        :param triggertype:        Trigger edge type. Allowed: ['rising', 'falling', 'gate_high', 'gate_low']
+        :param triggersource:        Trigger source. Allowed: ['none', 'scope_trig', 'aus_in', 'ext_in', 'soft_trig']
+        :param extInThreshold: External input threshold in ADC counts.
+        :return:
+        """
+
+        wave_types = ['sine', 'square', 'triangle', 'ramp_up', 'ramp_down', 'sinc', 'gaussian', 'half_sine',
+                      'dc_voltage', 'white_noise', 'max_wave_types']
+        trig_types = ['rising', 'falling', 'gate_high', 'gate_low']
+        trig_sources = ['none', 'scope_trig', 'aus_in', 'ext_in', 'soft_trig']
+
+        if wavetype not in wave_types:
+            raise ValueError(f"Invalid wavetype: {wavetype}. Allowed values: {wave_types}")
+        if triggertype not in trig_types:
+            raise ValueError(f"Invalid triggertype: {triggertype}. Allowed values: {trig_types}")
+        if triggersource not in trig_sources:
+            raise ValueError(f"Invalid triggersource: {triggersource}. Allowed values: {trig_sources}")
+
+
+        self.siggen_config.update(dict(offsetVoltage=offsetVoltage_us, pkToPk=pkToPk_us, wavetype=wavetype,
+                                  startFrequency=startFrequency, stopFrequency=stopFrequency,
+                                  increment=increment, dwelltime=dwelltime, sweeptype=sweeptype,
+                                  operation=operation, shots=shots, sweeps=sweeps,triggertype=triggertype,
+                                  triggersource=triggersource, extInThreshold=extInThreshold))
 
     def run_mode(self, mode:str):
         self.run_mode_config.update(dict(active_mode=mode))
@@ -266,7 +268,6 @@ class PicoScope4000A(Device):
         # Simple trigger
         if self.simple_trigger_config:
             simple_trigger_dtypes = np.dtype([
-                ('enabled', np.uint8),
                 ('source', 'S32'),
                 ('threshold', np.uint32),
                 ('direction', 'S32'),
@@ -275,7 +276,6 @@ class PicoScope4000A(Device):
             ])
             cfg = self.simple_trigger_config
             row = (
-                cfg['enabled'],
                 cfg['source'],
                 cfg['threshold'],
                 cfg['direction'],
@@ -333,11 +333,8 @@ class PicoScope4000A(Device):
             )
 
         # ------------------------------------------- Save sampling modes -------------------------------------------
-        if self.block_config is not None:
-            group.create_dataset('block_config', data=np.bytes_(json.dumps(self.block_config)))
-
-        if self.rapid_block_config is not None:
-            group.create_dataset('rapid_block_config', data=np.bytes_(json.dumps(self.rapid_block_config)))
+        # if self.block_config is not None:
+        #     group.create_dataset('block_config', data=np.bytes_(json.dumps(self.block_config)))
 
         if self.stream_config is not None:
             group.create_dataset('stream_config', data=np.bytes_(json.dumps(self.stream_config)))

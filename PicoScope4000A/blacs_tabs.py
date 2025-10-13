@@ -1,4 +1,4 @@
-from blacs.tab_base_classes import Worker
+from blacs.tab_base_classes import Worker, define_state
 from blacs.device_base_class import DeviceTab
 from user_devices.logger_config import logger
 from blacs.tab_base_classes import MODE_MANUAL
@@ -105,14 +105,12 @@ class PicoScopeTab(DeviceTab):
 
         # static button to use in manual mode
         button_layout = QHBoxLayout()
-        # todo: add functionality
-        self.start_button = QPushButton("Start Block Capture")
-        self.stream_button = QPushButton("Start Streaming")
+
+        self.stream_button = QPushButton("Start Streaming") # start streaming in manual mode
         self.siggen_button = QPushButton("Trigger Signal Generator")
-        self.start_button.setEnabled(False)
-        self.stream_button.setEnabled(False)
-        self.siggen_button.setEnabled(False)
-        button_layout.addWidget(self.start_button)
+        self.stream_button.setEnabled(False)   # todo: add functionality
+        self.siggen_button.clicked.connect(self.siggen_trigger)
+
         button_layout.addWidget(self.stream_button)
         button_layout.addWidget(self.siggen_button)
         layout.addLayout(button_layout)
@@ -176,4 +174,9 @@ class PicoScopeTab(DeviceTab):
             logger.warning(f"Unsupported data type for table {title}: {type(data)}")
 
         return table
+
+    @define_state(MODE_MANUAL, queue_state_indefinitely=True, delete_stale_states=True)
+    def siggen_trigger(self, button):
+        yield (self.queue_work(self.primary_worker, 'siggen_software_trigger'))
+
 
