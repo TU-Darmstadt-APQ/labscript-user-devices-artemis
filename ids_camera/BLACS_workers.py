@@ -189,6 +189,7 @@ class CameraWorker(Worker):
 
     def freerun_conf(self, value):
         frame_rate = value[0]
+        self.worker.keep_image = False
         self.camera.init_freerun(frame_rate)
         print(f"Configure to freerun")
         self.trigger_mode = "Freerun"

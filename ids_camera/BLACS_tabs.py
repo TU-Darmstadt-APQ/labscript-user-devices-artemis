@@ -239,6 +239,10 @@ class CameraTab(DeviceTab):
         self.settings_dialog.mirror_left_right.clicked.connect(self.on_mirror_lr_clicked)
 
         # Sync sliders and spinboxs
+        self.settings_dialog.spin_fps.valueChanged.connect(self.on_fps_changed)
+        self.settings_dialog.spin_exp.valueChanged.connect(self.on_exposure_changed)
+        self.settings_dialog.spin_gain.valueChanged.connect(self.on_gain_changed)
+
         # self.sync_slider_spin(self.settings_dialog.slider_fps, self.settings_dialog.spin_fps, self.on_fps_changed)
         # self.sync_slider_spin(self.settings_dialog.slider_exp, self.settings_dialog.spin_exp, self.on_exposure_changed)
         # self.sync_slider_spin(self.settings_dialog.slider_gain, self.settings_dialog.spin_gain, self.on_gain_changed)

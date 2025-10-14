@@ -239,9 +239,9 @@ class Camera:
     def set_exposure_time(self, time: float):
         """Sets the camera exposure time in microseconds.
         Precondition: The IDS peak API is initialized and a camera is opened.
-        :param time: in ms
+        :param time: in us
         """
-        time = time * 1000
+        print(f"[DEBUG] exposure time: {time}")
         if not self.opened:
             raise CameraError("Cannot set exposure time while camera is closed.")
 
