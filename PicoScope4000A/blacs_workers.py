@@ -148,7 +148,6 @@ class PicoScopeWorker(Worker):
             ds = f[f"/devices/{self.device_name}/StreamSamples"]
 
             while not self._stop_threads: # run till all samples collected
-
                 try:
                     start, data2d = self.pico.h5_queue.get(timeout=0.5)
 
@@ -171,7 +170,6 @@ class PicoScopeWorker(Worker):
 
                 if end == self.pico.total_samples:
                     ds.attrs['trigger_at'] = int(self.pico.triggered_at)
-
                     break
 
             print(f"\n [INFO] All {self.pico.total_samples} data samples have been collected and written to the hdf5 file.")
@@ -220,7 +218,7 @@ class PicoScope:
         self.auto_stop = False
 
         self.h5_queue = queue.Queue()
-
+        self.triggered_at = None
 
     #######################################################################
     ################# Device Management ###################################

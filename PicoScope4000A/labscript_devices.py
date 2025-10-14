@@ -157,17 +157,18 @@ class PicoScope4000A(Device):
 
 
     def set_stream_sampling(self,
-                            sampleInterval_ns:int, # in ns
+                            sampling_rate:float | int,
                             # noPreTriggerSamples:int,
-                            noPostTriggerSamples:int,
+                            noPostTriggerSamples:float | int,
                             autoStop:int=0,  # default stop after all samples collected
                             downSampleRatio:int=1, # default no downsampling
                             downSampleRatioMode:str='none', # default no downsampling
                             ):
+        sampleInterval_ns = int(1 / sampling_rate * 1e9) #todo math.round
 
         self.stream_config.update(dict(sampleInterval=sampleInterval_ns,
                                        # noPreTriggerSamples=noPreTriggerSamples,
-                             noPostTriggerSamples=noPostTriggerSamples, autoStop=autoStop, downSampleRatio=downSampleRatio,
+                             noPostTriggerSamples=int(noPostTriggerSamples), autoStop=autoStop, downSampleRatio=downSampleRatio,
                              downSampleRatioMode=downSampleRatioMode))
 
     def signal_generator_config(self,

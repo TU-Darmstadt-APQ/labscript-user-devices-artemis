@@ -39,7 +39,8 @@ class Caen:
         self.ethernet_host = '192.168.0.250'
         self.ethernet_port = 1470
 
-        if vid != 0x0 and pid != 0x0:
+        if self.vid is not None and self.pid is not None:
+            print(vid)
             self.using_usb = True
             self.open_usb()
         elif port != '':
@@ -48,6 +49,9 @@ class Caen:
         else:
             self.using_ethernet = True
             self.open_ethernet()
+
+        for ch in range(8):
+            self.enable_channel(ch, True)
 
         if not (self.using_usb or self.using_serial or self.using_ethernet):
             raise LabscriptError("No valid connection method (USB, Serial, Ethernet) provided.")
@@ -72,7 +76,6 @@ class Caen:
             self.dev = usb.core.find(idVendor=self.vid, idProduct=self.pid)
             if self.dev is None:
                 raise LabscriptError(f"[CAEN] CAEN USB device not found (VID={self.vid}, PID={self.pid}).")
-
             # Set the device configuration
             self.dev.set_configuration()
             # get an endpoint instance
@@ -190,10 +193,20 @@ class Caen:
      # logger.info(f"[CAEN] Sent: {cmd} \t Received: {response}")
 
     ### per channel commands
+    def enable_channel(self, channel:int, enable:bool):
+        if enable:
+            en='on'
+        else:
+            en='off'
+        cmd = f"$CMD:SET,CH:{channel},PAR:pw,val:{en}"
+        self.query(cmd)
+
     def set_voltage(self, channel:int, voltage:float):
         cmd = f"$CMD:SET,CH:{channel},PAR:VSET,VAL:{voltage}"
         self.query(cmd)
-
+        # cmd_info = f"$CMD:INFO,CH:{channel},PAR:STATUS"
+        # info = self.query(cmd_info)
+        # print(info)
         # self.send_to_CAEN(cmd)
         # response = self.receive_from_CAEN()
         # self._check_response(response)

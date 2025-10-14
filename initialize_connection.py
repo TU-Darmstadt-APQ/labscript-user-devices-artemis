@@ -22,61 +22,61 @@ from labscript_devices.DummyIntermediateDevice import DummyIntermediateDevice
 from user_devices.UM.labscript_devices import UM
 from user_devices.CAEN_R8034.labscript_devices import CAEN
 from user_devices.BNC_575.labscript_devices import BNC_575, PulseChannel
-# from user_devices.BS_cryo.models.BS_1_10 import BS_1_10
-# from user_devices.BS_cryo.models.BS_1_8 import BS_1_8
-# from user_devices.HV_stahl.models.HV_200_8 import HV_200_8
-# from user_devices.HV_stahl.models.HV_250_8 import HV_250_8
-# from user_devices.HV_stahl.models.HV_500_8 import HV_500_8
-# from labscript_devices.BS_Series.models.BS_341A_spec import BS_341A_spec
-# from labscript_devices.BS_Series.models.BS_341A import BS_341A
+from user_devices.BS_cryo.models.BS_1_10 import BS_1_10
+from user_devices.BS_cryo.models.BS_1_8 import BS_1_8
+from user_devices.HV_stahl.models.HV_200_8 import HV_200_8
+from user_devices.HV_stahl.models.HV_250_8 import HV_250_8
+from user_devices.HV_stahl.models.HV_500_8 import HV_500_8
+from labscript_devices.BS_Series.models.BS_341A_spec import BS_341A_spec
+from labscript_devices.BS_Series.models.BS_341A import BS_341A
 from user_devices.ids_camera.labscript_devices import IDSCamera
+# from user_devices.IDS_UI_5240SE.labscript_devices import IDS_UICamera
+
 from user_devices.PicoScope4000A.labscript_devices import PicoScope4000A, PicoAnalogIn
-from user_devices.AlliedVision.labscript_devices import AlviumCamera
+# from user_devices.AlliedVision.labscript_devices import AlviumCamera
 
 from user_devices.logger_config import logger
 
 def init_alvium():
     AlviumCamera(name='AlliedVision', serial_number="0C9X6")
+
 def init_picoscope():
     picoscope = PicoScope4000A(name='picoscope',
-                   serial_number='HO248/173',
+                   serial_number='HO248/178',
                    )
     # 8 channels
     # name, parent_device, connection, enabled=[0,1], coupling=['ac', 'dc'], analog_offset_v=[0.1..200], analog_offset_v=float
-    PicoAnalogIn(name='conn1', parent_device=picoscope, connection='channel_A', enabled=1, coupling='dc', range_v=10, analog_offset_v=0.0)
-    PicoAnalogIn(name='conn2', parent_device=picoscope, connection='channel_B', enabled=0, coupling='dc', range_v=10, analog_offset_v=0.0)
-    PicoAnalogIn(name='conn3', parent_device=picoscope, connection='channel_C', enabled=0, coupling='ac', range_v=24, analog_offset_v=0.0)
-    PicoAnalogIn(name='conn4', parent_device=picoscope, connection='channel_D', enabled=1, coupling='ac', range_v=50, analog_offset_v=0.0)
-    PicoAnalogIn(name='conn5', parent_device=picoscope, connection='channel_E', enabled=0, coupling='ac', range_v=50, analog_offset_v=0.0)
+    PicoAnalogIn(name='pico_0', parent_device=picoscope, connection='channel_A', enabled=1, coupling='dc', range_v=10, analog_offset_v=0.0)
+    PicoAnalogIn(name='pico_1', parent_device=picoscope, connection='channel_B', enabled=1, coupling='dc', range_v=10, analog_offset_v=0.0)
+    PicoAnalogIn(name='pico_2', parent_device=picoscope, connection='channel_C', enabled=1, coupling='ac', range_v=24, analog_offset_v=0.0)
+    PicoAnalogIn(name='pico_3', parent_device=picoscope, connection='channel_D', enabled=1, coupling='ac', range_v=50, analog_offset_v=0.0)
+    PicoAnalogIn(name='pico_4', parent_device=picoscope, connection='channel_E', enabled=1, coupling='ac', range_v=50, analog_offset_v=0.0)
 
 def init_IDS(trigger_device):
     IDSCamera(name='CameraIds',
         parent_device=trigger_device,
         connection='trigger',
         serial_number="4104380609",
-        # exposure_time=5000,
-        # frame_rate=30,
-        # gain=1.2,
-        # roi=(0, 0, 1280, 1024),
         camera_setting="Default")
+
+def init_IDS_UI():
+    IDS_UICamera(name='IDSCameraUI5240SE')
 
 def init_UM(clockline):
     # '/dev/ttyUSB0'
     UM(name='UM_ST', parent_device=clockline, port='/dev/ttyUSB0', baud_rate=9600)
     # Possible connections: "CH A'", "CH B'", "CH C'", "CH [1..10]"
-    AnalogOut(name="CRES_1", parent_device=UM_ST, connection="CH A'")
-    AnalogOut(name="CRES_2", parent_device=UM_ST, connection="CH B'")
-    AnalogOut(name="CRES_3", parent_device=UM_ST, connection="CH C'")
-    AnalogOut(name="CRES_4", parent_device=UM_ST, connection='CH 1')
-    AnalogOut(name="CRES_5", parent_device=UM_ST, connection='CH 2')
+    AnalogOut(name="UM_1", parent_device=UM_ST, connection="CH A'")
+    AnalogOut(name="UM_2", parent_device=UM_ST, connection="CH B'")
+    AnalogOut(name="UM_3", parent_device=UM_ST, connection="CH C'")
 
 def init_BNC_575():
     # sudo dmesg | grep tty , '/dev/ttyUSB0'
-    BNC_575(name='pulse_generator', port='/dev/pts/1', trigger_mode='DISabled')
+    BNC_575(name='pulse_generator', port='/dev/pts/6', trigger_mode='DISabled')
     # Possible connections: "pulse [1..]"
-    PulseChannel(name='pulse_1_for_CAEN', connection='pulse 1', parent_device=pulse_generator, delay=4, width=1, mode='SINGle')
-    PulseChannel(name='pulse_2_for_CC', connection='pulse 2', parent_device=pulse_generator, delay=1+2e-3, width=1, mode='SINGle')
-    PulseChannel(name='pulse_3_for_MCT', connection='pulse 3', parent_device=pulse_generator, delay=2+2e-3, width=1, mode='SINGle')
+    PulseChannel(name='pulse_1', connection='pulse 1', parent_device=pulse_generator, delay=1e-3, width=1, mode='SINGle')
+    PulseChannel(name='pulse_2', connection='pulse 2', parent_device=pulse_generator, delay=1+2e-3, width=1, mode='SINGle')
+    PulseChannel(name='pulse_3', connection='pulse 3', parent_device=pulse_generator, delay=2+2e-3, width=1, mode='SINGle')
     PulseChannel(name='pulse_4', connection='pulse 4', parent_device=pulse_generator, delay=2e-3, width=1)
 
 def init_BS_10(clockline):
@@ -105,18 +105,16 @@ def init_BS_341A(clockline):
     AnalogOut(name='ao1_bs_norm', parent_device=source_for_ST, connection='CH02')
 
 def init_CAEN(clockline):
-    logger.debug("INIT  VOLTAGE SOURCE")
     CAEN(
         name='voltage_source_serial',
         parent_device=clockline,
-        port='',
-        # vid=0x21e1,
-        # pid=0x0014,
+        port='/dev/ttyACM0',
+        #vid=0x21e1,
+        #pid=0x0014,
         baud_rate=9600
     )
-    AnalogOut(name='caen_ch_0', parent_device=voltage_source_serial, connection='CH 0', default_value=10)
-    AnalogOut(name='caen_ch_1', parent_device=voltage_source_serial, connection='CH 1', default_value=20)
-    AnalogOut(name='caen_ch_3', parent_device=voltage_source_serial, connection='CH 3', default_value=30)
+    AnalogOut(name='caen_0', parent_device=voltage_source_serial, connection='CH 3', default_value=1)
+    AnalogOut(name='caen_1', parent_device=voltage_source_serial, connection='CH 4', default_value=2)
 
 def init_HV_200_8(clockline):
     HV_200_8(name="power_supply_for_ST", parent_device=clockline, port='/dev/pts/4')
