@@ -16,9 +16,9 @@ class CAEN(IntermediateDevice):
     allowed_children = [AnalogOut]
 
     @set_passed_properties({"connection_table_properties": ["port", "baud_rate", "pid", "vid"]})
-    def __init__(self, name, port='', vid=None, pid=None, baud_rate=9600, parent_device=None, connection=None, **kwargs):
+    def __init__(self, name, port=None, vid=None, pid=None, baud_rate=9600, parent_device=None, connection=None, **kwargs):
         IntermediateDevice.__init__(self, name, parent_device, **kwargs)
-        if port != '':
+        if port is not None:
             self.BLACS_connection = '%s,%s' % (port, baud_rate)
         else:
             self.BLACS_connection = '%s,%s' % (vid, pid)

@@ -40,15 +40,27 @@ from user_devices.logger_config import logger
 def init_alvium():
     AlviumCamera(name='AlliedVision', serial_number="0C9X6")
 
+def init_CAEN(clockline):
+    CAEN(
+        name='voltage_source_serial',
+        parent_device=clockline,
+        # port='/dev/ttyACM0',
+        vid="21e1",
+        pid="0014",
+        baud_rate=9600
+    )
+    AnalogOut(name='caen_0', parent_device=voltage_source_serial, connection='CH 3', default_value=0)
+    AnalogOut(name='caen_1', parent_device=voltage_source_serial, connection='CH 4', default_value=0)
+
 def init_picoscope():
     picoscope = PicoScope4000A(name='picoscope',
                    serial_number='HO248/178',
                    )
     # 8 channels
     # name, parent_device, connection, enabled=[0,1], coupling=['ac', 'dc'], analog_offset_v=[0.1..200], analog_offset_v=float
-    PicoAnalogIn(name='pico_0', parent_device=picoscope, connection='channel_A', enabled=1, coupling='dc', range_v=10, analog_offset_v=0.0)
-    PicoAnalogIn(name='pico_1', parent_device=picoscope, connection='channel_B', enabled=1, coupling='dc', range_v=10, analog_offset_v=0.0)
-    PicoAnalogIn(name='pico_2', parent_device=picoscope, connection='channel_C', enabled=1, coupling='ac', range_v=24, analog_offset_v=0.0)
+    PicoAnalogIn(name='pico_0', parent_device=picoscope, connection='channel_A', enabled=1, coupling='dc', range_v=50, analog_offset_v=0.0)
+    PicoAnalogIn(name='pico_1', parent_device=picoscope, connection='channel_B', enabled=1, coupling='dc', range_v=50, analog_offset_v=0.0)
+    PicoAnalogIn(name='pico_2', parent_device=picoscope, connection='channel_C', enabled=1, coupling='ac', range_v=50, analog_offset_v=0.0)
     PicoAnalogIn(name='pico_3', parent_device=picoscope, connection='channel_D', enabled=1, coupling='ac', range_v=50, analog_offset_v=0.0)
     PicoAnalogIn(name='pico_4', parent_device=picoscope, connection='channel_E', enabled=1, coupling='ac', range_v=50, analog_offset_v=0.0)
 
@@ -103,18 +115,6 @@ def init_BS_341A(clockline):
     BS_341A_spec(name='source_for_ST', parent_device=clockline, port='/dev/pts/3', baud_rate=9600)
     AnalogOut(name='ao0_bs_norm', parent_device=source_for_ST, connection='CH01', default_value=1.23)
     AnalogOut(name='ao1_bs_norm', parent_device=source_for_ST, connection='CH02')
-
-def init_CAEN(clockline):
-    CAEN(
-        name='voltage_source_serial',
-        parent_device=clockline,
-        port='/dev/ttyACM0',
-        #vid=0x21e1,
-        #pid=0x0014,
-        baud_rate=9600
-    )
-    AnalogOut(name='caen_0', parent_device=voltage_source_serial, connection='CH 3', default_value=1)
-    AnalogOut(name='caen_1', parent_device=voltage_source_serial, connection='CH 4', default_value=2)
 
 def init_HV_200_8(clockline):
     HV_200_8(name="power_supply_for_ST", parent_device=clockline, port='/dev/pts/4')

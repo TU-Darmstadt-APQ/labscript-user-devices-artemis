@@ -5,6 +5,7 @@ import serial
 from labscript import LabscriptError
 from user_devices.logger_config import logger
 import time
+import serial.tools.list_ports
 
 
 class Caen:
@@ -40,10 +41,9 @@ class Caen:
         self.ethernet_port = 1470
 
         if self.vid is not None and self.pid is not None:
-            print(vid)
             self.using_usb = True
             self.open_usb()
-        elif port != '':
+        elif port is not None:
             self.using_serial = True
             self.open_serial()
         else:
@@ -73,66 +73,24 @@ class Caen:
 
     def open_usb(self):
         try:
-            self.dev = usb.core.find(idVendor=self.vid, idProduct=self.pid)
-            if self.dev is None:
-                raise LabscriptError(f"[CAEN] CAEN USB device not found (VID={self.vid}, PID={self.pid}).")
-            # Set the device configuration
-            self.dev.set_configuration()
-            # get an endpoint instance
-            cfg = self.dev.get_active_configuration()
-
-            self.ep_out = None
-            self.ep_in = None
-            selected_intf = None
-            # todo: do better
-            for interface in cfg:
-                for alt_setting in range(interface.bNumEndpoints):  # Можно просто перебирать альтернативы интерфейса
-                    intf = usb.util.find_descriptor(cfg, bInterfaceNumber=interface.bInterfaceNumber,
-                                                    bAlternateSetting=alt_setting)
-                    if intf is None:
-                        continue
-
-                    # Ищем Bulk OUT
-                    ep_out_candidate = usb.util.find_descriptor(
-                        intf,
-                        custom_match=lambda e: (
-                                    usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_OUT and
-                                    usb.util.endpoint_type(e.bmAttributes) == usb.util.ENDPOINT_TYPE_BULK)
-                    )
-
-                    ep_in_candidate = usb.util.find_descriptor(
-                        intf,
-                        custom_match=lambda e: (
-                                    usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_IN and
-                                    usb.util.endpoint_type(e.bmAttributes) == usb.util.ENDPOINT_TYPE_BULK)
-                    )
-
-                    if ep_in_candidate and ep_out_candidate:
-                        self.ep_in = ep_in_candidate
-                        self.ep_out = ep_out_candidate
-                        selected_intf = intf
-                        print(f"Selected interface {interface.bInterfaceNumber} alt {alt_setting}")
-                        break
-                if self.ep_in and self.ep_out:
-                    break
-
-
-            logger.info(f"ep out: {self.ep_out}, ep in = {self.ep_in}")
-
-            if self.ep_out is None or self.ep_in is None:
-                raise LabscriptError("Could not find USB IN/OUT endpoints.")
-
-            logger.info(f"[CAEN] USB connection established: VID={hex(self.vid)}, PID={hex(self.pid)}")
-
+            port_found = False
+            ports = list(serial.tools.list_ports.comports())
+            for p in ports:
+                if self.pid.upper() and self.vid.upper() in p.hwid:
+                    self.port = p.device
+                    print(f"serial:", self.serial)
+                    self.open_serial()
+                    port_found = True
+            if not port_found:
+                raise LabscriptError(f"USB connection failed: COM port with pid:vid={self.pid}:{self.vid} not found.")
+            self.using_serial = True
+            self.using_usb = False
         except Exception as e:
             self.close_usb()
             raise LabscriptError(f"USB connection failed: {e}")
 
     def close_usb(self):
-        if hasattr(self, 'dev') and self.dev:
-            usb.util.dispose_resources(self.dev)
-            self.dev = None
-            logger.info("[CAEN] USB device released.")
+        self.close_serial()
 
     def open_serial(self):
         try:
@@ -193,6 +151,16 @@ class Caen:
      # logger.info(f"[CAEN] Sent: {cmd} \t Received: {response}")
 
     ### per channel commands
+    def check_channel_status(self, channel:int):
+        """Checks the status of the channel."""
+        # todo:
+        cmd = f"$CMD:INFO,CH:{channel},PAR:STATUS"
+        info = self.query(cmd)
+        print(info)
+
+        info_val = self.query(cmd, True)
+        print(info_val)
+
     def enable_channel(self, channel:int, enable:bool):
         if enable:
             en='on'
@@ -204,9 +172,7 @@ class Caen:
     def set_voltage(self, channel:int, voltage:float):
         cmd = f"$CMD:SET,CH:{channel},PAR:VSET,VAL:{voltage}"
         self.query(cmd)
-        # cmd_info = f"$CMD:INFO,CH:{channel},PAR:STATUS"
-        # info = self.query(cmd_info)
-        # print(info)
+
         # self.send_to_CAEN(cmd)
         # response = self.receive_from_CAEN()
         # self._check_response(response)
