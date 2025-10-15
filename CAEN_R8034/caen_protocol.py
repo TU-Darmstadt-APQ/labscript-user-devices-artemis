@@ -52,6 +52,7 @@ class Caen:
 
         for ch in range(8):
             self.enable_channel(ch, True)
+            self.check_channel_status(ch)
 
         if not (self.using_usb or self.using_serial or self.using_ethernet):
             raise LabscriptError("No valid connection method (USB, Serial, Ethernet) provided.")
@@ -78,7 +79,6 @@ class Caen:
             for p in ports:
                 if self.pid.upper() and self.vid.upper() in p.hwid:
                     self.port = p.device
-                    print(f"serial:", self.serial)
                     self.open_serial()
                     port_found = True
             if not port_found:
@@ -155,11 +155,8 @@ class Caen:
         """Checks the status of the channel."""
         # todo:
         cmd = f"$CMD:INFO,CH:{channel},PAR:STATUS"
-        info = self.query(cmd)
-        print(info)
-
-        info_val = self.query(cmd, True)
-        print(info_val)
+        response = self.query(cmd)
+        print("STATUS\t", response)
 
     def enable_channel(self, channel:int, enable:bool):
         if enable:

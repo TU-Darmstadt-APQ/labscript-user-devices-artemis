@@ -7,7 +7,7 @@ from user_devices.logger_config import logger
 import time
 from datetime import datetime
 from .caen_protocol import Caen
-
+import numpy as np
 
 class CAENWorker(Worker):
     def init(self):
@@ -22,6 +22,8 @@ class CAENWorker(Worker):
         
     def shutdown(self):
         """Closes connection."""
+        self._stop_event.set()
+        self.thread.join()
         self.caen.close_connection()
 
     def program_manual(self, front_panel_values): 
@@ -152,8 +154,11 @@ class CAENWorker(Worker):
         for channel, voltage in self.front_panel_values.items():
             ch_num = self._get_channel_num(channel)
             self.caen.set_voltage(ch_num, voltage)
+            # store the values from manual to hdf5 file.
             print(f"→ {channel}: {voltage:.2f} V")
             logger.info(f"[CAEN] Setting {channel} to {voltage:.2f} V (manual mode)")
+        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        self._append_front_panel_values_to_manual(self.front_panel_values, current_time)
 
     def monitor_CAEN(self, kwargs):
         """ Monitor voltages on channels, display in terminal """
@@ -164,5 +169,48 @@ class CAENWorker(Worker):
             print(f"→ {channel}: Monitor: {mon_voltage:.2f} \t GUI: {voltage:.2f} V")
             logger.info(f"[CAEN] Monitoring {channel} with {mon_voltage:.2f} V (manual mode)")
 
+    def _append_front_panel_values_to_manual(self, front_panel_values, current_time):
+        """
+            Append front-panel voltage values to the 'AO_manual' dataset in the HDF5 file.
+
+            This method records the current manual voltage settings (from the front panel)
+            along with a timestamp into the 'AO_manual' table inside the device's HDF5 group.
+            It assumes that `self.h5file` and `self.device_name` have been set
+            (in `transition_to_buffered`). If not, a RuntimeError is raised.
+
+            Args:
+            front_panel_values (dict):
+                Dictionary mapping channel names (e.g., 'CH01') to voltage values (float).
+            current_time (str):
+                The timestamp (formatted as a string) when the values were recorded
+
+            Raises:
+                RuntimeError: If `self.h5file` is not set (i.e., manual values are being saved before
+                the system is in buffered mode).
+            """
+        # Check if h5file is set (transition_to_buffered must be called first)
+        if not hasattr(self, 'h5file') or self.h5file is None:
+            raise RuntimeError(
+                "Cannot save manual front-panel values: "
+                "`self.h5file` is not set. Make sure `transition_to_buffered()` has been called before sending to the device."
+            )
+
+        with h5py.File(self.h5file, 'r+') as hdf5_file:
+            group = hdf5_file['devices'][self.device_name]
+            dset = group['AO_manual']
+            old_shape = dset.shape[0]
+            dtype = dset.dtype
+            connections = [name for name in dset.dtype.names if name != 'time']  # 'CH 1'
+
+            # Create new data row
+            new_row = np.zeros((1,), dtype=dtype)
+            new_row['time'] = current_time
+            for conn in connections:
+                channel_name = conn  # 'CH 1'
+                new_row[conn] = front_panel_values.get(channel_name, 0.0)
+
+            # Add new row to table
+            dset.resize(old_shape + 1, axis=0)
+            dset[old_shape] = new_row[0]
 # --------------------contants
 BLUE = '#66D9EF'

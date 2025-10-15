@@ -6,6 +6,7 @@ from labscript import AnalogOut
 from labscript import LabscriptError
 import time
 import numpy as np
+import h5py
 import os
 from user_devices.logger_config import logger
 
@@ -52,3 +53,24 @@ class CAEN(IntermediateDevice):
 
         group = self.init_device_group(hdf5_file)
         group.create_dataset("AO_buffered", data=analog_out_table, compression=config.compression)
+
+        # create dataset for values from manual
+        AO_manual_table = self._make_analog_out_table_from_manual(analogs)
+        group.create_dataset("AO_manual", shape=AO_manual_table.shape, maxshape=(None,), dtype=AO_manual_table.dtype,
+                             compression=config.compression, chunks=True)
+
+
+    def _make_analog_out_table_from_manual(self, analogs):
+        """Create a structured empty numpy array with first column as 'time', followed by analog channel data.
+        Args:
+            times (array-like): Array of timestamps.
+            ...
+        Returns:
+            np.ndarray: Structured empty array with time and analog outputs."""
+
+        str_dtype = h5py.string_dtype(encoding='utf-8', length=19)
+
+        dtypes = [('time', str_dtype)] + [(c, np.float32) for c in analogs]
+
+        analog_out_table = np.empty(0, dtype=dtypes)
+        return analog_out_table
