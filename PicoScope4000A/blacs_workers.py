@@ -21,22 +21,25 @@ class PicoScopeWorker(Worker):
 
         self.h5_file = None
         self.device_name = None
-        self.total_samples = 0
+        self.complete_buffers = None
 
         self._stop_threads = None
+        self._stop_writer_event = threading.Event()
+        self._stop_writer_event.clear()
 
     def shutdown(self):
         self._stop_threads = True
         self.pico._stop_threads = True
 
+        # join threads
+        if getattr(self.pico, "fetcher", None) is not None:
+            self.pico.fetcher.join(timeout=1.0)
+        if getattr(self, "writer", None) is not None:
+            self.writer.join(timeout=1.0)
+
+        # close unit
         self.pico.stop_unit()
         self.pico.close_unit()
-
-        # join threads
-        if getattr(self.pico, "fetcher_thread", None) is not None:
-            self.fetcher_thread.join(timeout=1.0)
-        if getattr(self, "writer_thread", None) is not None:
-            self.writer_thread.join(timeout=1.0)
 
     def program_manual(self, front_panel_values):
         pass
@@ -128,9 +131,11 @@ class PicoScopeWorker(Worker):
 
             ds = group.create_dataset("StreamSamples", shape=(rows, cols), dtype=np.float32)
             ds.attrs["channel_names"] = [f"CH{ch}" for ch, enabled in enumerate(self.pico.enabled_channels) if enabled == 1]
-            ds.attrs["sample_interval"] = self.pico.actual_sample_interval # todo?
+            ds.attrs["actual_sample_interval"] = self.pico.actual_sample_interval # todo?
 
-        self.writer = threading.Thread(target=self.h5_writer_thread, daemon=True)
+        # store samples in complete buffer
+        self.complete_buffers = np.zeros(shape=(rows, cols), dtype=np.float32)
+        self.writer = threading.Thread(target=self.writer_thread, daemon=True)
         self.writer.start()
 
         rich_print(f"---------- End transition to Buffered: ----------", color=BLUE)
@@ -138,42 +143,43 @@ class PicoScopeWorker(Worker):
 
     def transition_to_manual(self):
         rich_print(f"---------- Begin transition to Manual: ----------", color=BLUE)
+        # write the samples into hdf5 file
+        with h5py.File(self.h5_file, "r+") as f:
+            ds = f[f"/devices/{self.device_name}/StreamSamples"]
+            ds[...] = self.complete_buffers
+            ds.attrs['trigger_at'] = int(self.pico.triggered_at)
 
+        print(f"\n [INFO] All {self.pico.total_samples} data samples have been collected and written to the hdf5 file.")
         rich_print(f"---------- End transition to Manual: ----------", color=BLUE)
         return True
 
-    def h5_writer_thread(self):
-        """Get from queue 2d data block. Transform ADC counts to mV. Save new data in hdf5file."""
-        with h5py.File(self.h5_file, "r+") as f:
-            ds = f[f"/devices/{self.device_name}/StreamSamples"]
+    def writer_thread(self):
+        """Get from queue 2d data block. Transform ADC counts to mV. Save new data in complete buffer."""
+        while not self._stop_threads and not self._stop_writer_event.is_set(): # run till all samples collected
+            try:
+                start, data2d = self.pico.h5_queue.get(timeout=0.5)
 
-            while not self._stop_threads: # run till all samples collected
-                try:
-                    start, data2d = self.pico.h5_queue.get(timeout=0.5)
+            except queue.Empty:
+                continue
 
-                except queue.Empty:
+            n = data2d.shape[0] # number of samples
+            end = start + n # the last sample number
+            if end > self.complete_buffers.shape[0]:
+                print(f"[WARNING] Too many samples, truncating... start={start}, requested_end={end}, ds_rows={self.complete_buffers.shape[0]}")
+                n = self.complete_buffers.shape[0] - start # number of samples to save, the rest get lost
+                if n <= 0:
                     continue
+                data2d = data2d[:n, :]
+                end = start + n
 
-                n = data2d.shape[0] # number of samples
-                end = start + n # the last sample number
-                if end > ds.shape[0]:
-                    print(f"[WARNING] Too many samples, truncating... start={start}, requested_end={end}, ds_rows={ds.shape[0]}")
-                    n = ds.shape[0] - start # number of samples to save, the rest get lost
-                    if n <= 0:
-                        continue
-                    data2d = data2d[:n, :]
-                    end = start + n
+            # Save data
+            data_mV = self.pico.adc2mv(data2d)
+            self.complete_buffers[start:end, :] = data_mV.astype(self.complete_buffers.dtype)
 
-                # Save data
-                data_mV = self.pico.adc2mv(data2d)
-                ds[start:end, :] = data_mV.astype(ds.dtype)
+            if end == self.pico.total_samples:
+                self._stop_writer_event.set()
 
-                if end == self.pico.total_samples:
-                    ds.attrs['trigger_at'] = int(self.pico.triggered_at)
-                    break
-
-            print(f"\n [INFO] All {self.pico.total_samples} data samples have been collected and written to the hdf5 file.")
-            f.flush()
+        print(f"\n [INFO] All {self.pico.total_samples} data samples have been collected.")
 
     def abort_transition_to_buffered(self):
         return self.transition_to_manual()
@@ -526,7 +532,6 @@ class PicoScope:
                     time.sleep(0.01)
 
             print(f"[WARNING] Fetcher thread is finished... No more data is being collected.")
-            self.stop_h5_writer = True
 
         # Start a thread to register callback and fetch data
         self.fetcher = threading.Thread(target=fetching_thread, daemon=True)
