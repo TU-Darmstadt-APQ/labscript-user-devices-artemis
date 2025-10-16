@@ -115,6 +115,14 @@ class PicoScopeWorker(Worker):
 
         rich_print(f"---------- End transition to Manual: ----------", color=BLUE)
 
+    def abort_transition_to_buffered(self):
+        return self.transition_to_manual()
+
+    def abort_buffered(self):
+        return self.abort_transition_to_buffered()
+
+    def siggen_software_trigger(self):
+        print("[Warning] SigGen is Not supported in the simplified version.")
 
 class PicoScope(object):
     def __init__(self, serial_number):
