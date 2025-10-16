@@ -270,7 +270,7 @@ class PicoScope4000A(Device):
         if self.simple_trigger_config:
             simple_trigger_dtypes = np.dtype([
                 ('source', 'S32'),
-                ('threshold', np.uint32),
+                ('threshold', np.int32),
                 ('direction', 'S32'),
                 ('delay', np.uint32),
                 ('autoTrigger_ms', np.uint32)

@@ -7,9 +7,10 @@ import matplotlib.pyplot as plt
 from picosdk.functions import adc2mV, assert_pico_ok, mV2adc
 import time
 
+
 chandle = ctypes.c_int16()
 status = {}
-serial_number = 'H0248/178'
+serial_number = 'HO248/178'
 serial_number = serial_number.encode()
 status["openunit"] = ps.ps4000aOpenUnit(ctypes.byref(chandle), serial_number)
 
@@ -18,7 +19,7 @@ disabled = 0
 analogue_offset = 0.0
 channel_range = 9
 
-maxADC = ctypes.c_int16()
+maxADC = ctypes.c_int32()
 status["maximumValue"] = ps.ps4000aMaximumValue(chandle, ctypes.byref(maxADC))
 assert_pico_ok(status["maximumValue"])
 
@@ -99,9 +100,8 @@ def streaming_callback(handle, noOfSamples, startIndex, overflow, triggerAt, tri
     if was_triggered == 1:
         destEnd = nextSample + noOfSamples
         sourceEnd = startIndex + noOfSamples
-        print(f"complete = {destEnd-nextSample}, working = {sourceEnd-startIndex}")
+        # print(f"complete = {destEnd-nextSample}, working = {sourceEnd-startIndex}")
         for ch in range(8):
-            complete_buffers[ch][nextSample:destEnd] = buffers[ch][startIndex:sourceEnd]
             complete_buffers[ch][nextSample:destEnd] = buffers[ch][startIndex:sourceEnd]
         nextSample += noOfSamples
         if autoStop:
@@ -110,11 +110,10 @@ def streaming_callback(handle, noOfSamples, startIndex, overflow, triggerAt, tri
 # Convert the python function into a C function pointer.
 cFuncPtr = ps.StreamingReadyType(streaming_callback)
 
-fetching_thread = threading.Thread(target=fetching)
-fetching_thread.start()
-
+start_plotting = False
 def fetching():
     # Fetch data from the driver in a loop, copying it out of the registered buffers and into our complete one.
+    global start_plotting
     while nextSample < totalSamples and not autoStopOuter:
         wasCalledBack = False
         status["getStreamingLastestValues"] = ps.ps4000aGetStreamingLatestValues(chandle, cFuncPtr, None)
@@ -124,20 +123,28 @@ def fetching():
             time.sleep(0.01)
 
     print(f"Stop grabbing")
+    start_plotting = True
 
+fetching_thread = threading.Thread(target=fetching)
+fetching_thread.start()
+
+
+while not start_plotting:
+    time.sleep(0.01)
 
 # Convert ADC counts data to mV
 mv_buffers = {}
 for ch in range(8):
-    mv_buffers[ch] =  adc2mV(buffers[ch].astype(np.int32) , channel_range, maxADC)
+    mv_buffers[ch] =  adc2mV(complete_buffers[ch].astype(np.int32) , channel_range, maxADC)
 
 # Create time data
-time = np.linspace(0, (totalSamples - 1) * actualSampleIntervalNs, totalSamples)
+time_arr = np.linspace(0, (totalSamples - 1) * actualSampleIntervalNs, totalSamples)
 
 # Plot data from channel A and B
-for ch in range(8):
-    plt.plot(time, mv_buffers[ch][:])
-# plt.plot(time, adc2mVChBMax[:])
+
+plt.plot(time_arr, mv_buffers[0][:])
+plt.plot(time_arr, mv_buffers[1][:])
+plt.plot(time_arr, mv_buffers[2][:])
 plt.xlabel('Time (ns)')
 plt.ylabel('Voltage (mV)')
 plt.show()

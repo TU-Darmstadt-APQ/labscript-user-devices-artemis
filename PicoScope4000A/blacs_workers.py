@@ -86,7 +86,7 @@ class PicoScopeWorker(Worker):
         data_list = []
         for ch in channels:
             buf_adc = self.pico.complete_buffers[ch]
-            buf_mv = self.pico.adc2mv_1d(buf_adc.astype(np.int32), ch) 
+            buf_mv = self.pico.adc2mv_1d(buf_adc.astype(np.int32), ch)
             data_list.append(buf_mv)
 
         print(f"[DEBUG] final shape {len(data_list)}")
@@ -220,13 +220,14 @@ class PicoScope(object):
 
         def streaming_callback(handle, noOfSamples, startIndex, overflow, triggerAt, triggered, autoStop, param):
             self.was_called_back = True
-
-            if triggered != 0:
+            trigger_now = False
+            if triggered != 0 and not self.was_triggered:
                 self.was_triggered = True
+                trigger_now = True
                 self.triggered_at = triggerAt
                 print(f"\n [INFO] Was Triggered at {self.triggered_at}")
 
-            if self.was_triggered:
+            if self.was_triggered or trigger_now:
                 dest_end = self.next_sample + noOfSamples
                 source_end = startIndex + noOfSamples
 
@@ -260,7 +261,7 @@ class PicoScope(object):
             self.stop_sampling()
 
         # start fetching data in different thread to not block buffered mode
-        self.fetching_thread = threading.Thread(target=fetching, daemon=True)
+        self.fetching_thread = threading.Thread(target=fetching)
         self.fetching_thread.start()
         print("[INFO] Waiting for trigger ...")
 

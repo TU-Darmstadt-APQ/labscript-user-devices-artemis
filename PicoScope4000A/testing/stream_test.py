@@ -2,7 +2,7 @@
 # Copyright (C) 2018-2019 Pico Technology Ltd. See LICENSE file for terms.
 #
 # PS2000 Series (A API) STREAMING MODE EXAMPLE
-# This example demonstrates how to call the ps4000A driver API functions in order to open a device, setup 2 channels and collects streamed data (1 buffer) given trigger.
+# This example demonstrates how to call the ps4000aA driver API functions in order to open a device, setup 2 channels and collects streamed data (1 buffer) given trigger.
 # This data is then plotted as mV against time in ns.
 
 import ctypes
@@ -18,7 +18,8 @@ status = {}
 
 # Open PicoScope 2000 Series device
 # Returns handle to chandle for use in future API functions
-status["openunit"] = ps.ps4000aOpenUnit(ctypes.byref(chandle), None)
+ser_no = 'HO248/178'
+status["openunit"] = ps.ps4000aOpenUnit(ctypes.byref(chandle), ser_no.encode())
 
 try:
     assert_pico_ok(status["openunit"])
@@ -45,7 +46,7 @@ analogue_offset = 0.0
 # coupling type = PS4000A_DC = 1
 # range = PS4000A_2V = 7
 # analogue offset = 0 V
-channel_range = 9
+channel_range = 5
 status["setChA"] = ps.ps4000aSetChannel(chandle,
                                         ps.PS4000A_CHANNEL['PS4000A_CHANNEL_A'],
                                         enabled,
@@ -70,8 +71,8 @@ status["setChB"] = ps.ps4000aSetChannel(chandle,
 assert_pico_ok(status["setChB"])
 
 # Size of capture
-sizeOfOneBuffer = 500
-numBuffersToCapture = 20
+sizeOfOneBuffer = 1000
+numBuffersToCapture = 40
 
 totalSamples = sizeOfOneBuffer * numBuffersToCapture
 totalSamples_stream = totalSamples
@@ -123,10 +124,10 @@ maxADC = ctypes.c_int16()
 status["maximumValue"] = ps.ps4000aMaximumValue(chandle, ctypes.byref(maxADC))
 assert_pico_ok(status["maximumValue"])
 
-threshold = mV2adc(0, channel_range, maxADC)
+threshold = mV2adc(700, channel_range, maxADC)
 status["SimpleTrigger"] = ps.ps4000aSetSimpleTrigger(chandle,
                                                      1,
-                                                     0, # ps.PS4000A_CHANNEL['PS4000A_CHANNEL_A'],
+                                                     1, # ps.PS4000A_CHANNEL['PS4000A_CHANNEL_A'],
                                                      threshold,
                                                      ps.PS4000A_THRESHOLD_DIRECTION['PS4000A_RISING'],
                                                      0,
