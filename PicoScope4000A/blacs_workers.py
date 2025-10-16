@@ -86,7 +86,7 @@ class PicoScopeWorker(Worker):
         data_list = []
         for ch in channels:
             buf_adc = self.pico.complete_buffers[ch]
-            buf_mv = self.pico.adc2mv_1d(buf_adc.astype(np.int32), ch) #todo: out of bounds
+            buf_mv = self.pico.adc2mv_1d(buf_adc.astype(np.int32), ch) 
             data_list.append(buf_mv)
 
         print(f"[DEBUG] final shape {len(data_list)}")
