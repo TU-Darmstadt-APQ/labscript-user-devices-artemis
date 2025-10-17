@@ -1,3 +1,5 @@
+from json.decoder import FLAGS
+
 from blacs.tab_base_classes import Worker
 from labscript import LabscriptError
 from user_devices.logger_config import logger
@@ -14,56 +16,61 @@ from picosdk.functions import adc2mV, assert_pico_ok, mV2adc
 from picosdk.constants import PICO_STATUS
 
 import zmq
+import datetime
 
 
 BLUE = '#66D9EF'
 
 class PicoScopeWorker(Worker):
     def init(self):
+        self.pico = PicoScope(self.serial_number)
+
         # Set the communication server for master and slave picoscopes
         self.ctx = zmq.Context()
 
         if self.is_master:
             self.sock = self.ctx.socket(zmq.PUB)
             self.sock.bind("tcp://127.0.0.1:6001")
-            self.wait_for_hardware_trigger()
         else:
             self.sock = self.ctx.socket(zmq.SUB)
             self.sock.connect("tcp://127.0.0.1:6001")
             self.sock.subscribe(b"")
-            self.start_zmq_listener()
 
-        self.pico = PicoScope(self.serial_number)
+        if self.is_master:
+            self.start_trigger_waiter()
+        else:
+            self.start_zmq_listener()
 
         self.h5_file = None
         self.device_name = None
 
         self.stop_writing_flag = False
 
-    def start_zmq_listener(self):
-        """For the slave only: wait for trigger signal from master."""
+    def start_trigger_waiter(self):
+        def wait_trigger():
+            self.pico.trigger_zmq_event.wait() # block thread till event set
+            self.sock.send(b"TRIGGER")
 
+        self.waiting_trigger_thread = threading.Thread(target=wait_trigger)
+        self.waiting_trigger_thread.start()
+
+
+    def start_zmq_listener(self):
         def listen():
             while True:
-                msg = self.sock.recv()
-                if msg == b"TRIGGER":
-                    print(f"[{self.device_name}] Received trigger from master")
-                    self.trigger_event.set()
-                    break
+                try:
+                    msg = self.sock.recv(flags=zmq.NOBLOCK)
+                    if msg == b"TRIGGER":
+                        print(f"Received trigger from master ")
+                        self.pico.trigger_event.set() # start collecting data
+                        print(datetime.datetime.now())
+                        break
+                except zmq.Again:
+                    continue
 
-        self.zmq_thread = threading.Thread(target=listen, daemon=True)
-        self.zmq_thread.start()
+        self.listening_thread = threading.Thread(target=listen)
+        self.listening_thread.start()
 
-    def wait_for_hardware_trigger(self):
-        """For master only: waits for hardware trigger and send the TRIGGER signal to slave(s)."""
-
-        def wait_for_trigger():
-            while True:
-                if self.pico.trigger_event.is_set():
-                    self.sock.send(b"TRIGGER")
-
-        self.waiting_thread = threading.Thread(target=wait_for_trigger, daemon=True)
-        self.waiting_thread.start()
 
     def shutdown(self):
         # stop fetching thread
@@ -71,10 +78,6 @@ class PicoScopeWorker(Worker):
             self.pico.stop_sampling_event.set()
         if getattr(self.pico, "fetching_thread") is not None:
             self.pico.fetching_thread.join()
-        if getattr(self, "waiting_thread") is not None:
-            self.waiting_thread.join()
-        if getattr(self, "zmq_thread") is not None:
-            self.zmq_thread.join()
 
         # stop sampling and close unit
         self.pico.stop_sampling()
@@ -113,6 +116,7 @@ class PicoScopeWorker(Worker):
                 self.stream_config["downSampleRatio"],
                 self.stream_config["downSampleRatioMode"],
             )
+
         rich_print(f"---------- End transition to Buffered: ----------", color=BLUE)
         return
 
@@ -148,14 +152,10 @@ class PicoScopeWorker(Worker):
 
             ds = group.create_dataset("StreamSamples", data=data_array, dtype=np.float32)
             ds.attrs["channels"] = np.array(channels, dtype=int)
-            ds.attrs["trigger_at"] = int(self.pico.triggered_at)
+            if self.is_master:
+                ds.attrs["trigger_at"] = int(self.pico.triggered_at)
 
         print(f"[INFO] Saved {data_array.shape[0]} samples × {data_array.shape[1]} channels")
-
-        # # DEBUG
-        # with h5py.File(self.h5_file, "r") as f:
-        #     ds = f[f"/devices/{self.device_name}/StreamSamples"]
-        #     # print("[DEBUG] Shape, Channels: ", ds.shape, ds.attrs["channels"])
 
         rich_print(f"---------- End transition to Manual: ----------", color=BLUE)
         return True
@@ -182,6 +182,8 @@ class PicoScope(object):
         # Triggering
         self.trigger_event = threading.Event()
         self.trigger_event.clear()
+        self.trigger_zmq_event = threading.Event()
+        self.trigger_zmq_event.clear()
 
         self.buffers = {} # in adc
         self.complete_buffers = {} # in adc
@@ -274,7 +276,9 @@ class PicoScope(object):
             self.was_called_back = True
 
             if triggered != 0 and not self.trigger_event.is_set():
+                print(datetime.datetime.now())
                 self.trigger_event.set()
+                self.trigger_zmq_event.set()
                 self.triggered_at = triggerAt
                 print(f"\n [INFO] Was Triggered at {self.triggered_at}")
 
