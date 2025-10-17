@@ -26,6 +26,8 @@ class PicoScopeWorker(Worker):
 
     def shutdown(self):
         # stop fetching thread
+        if hasattr(self.pico, "stop_sampling_event"):
+            self.pico.stop_sampling_event.set()
         if getattr(self.pico, "fetching_thread") is not None:
             self.pico.fetching_thread.join()
 
@@ -73,8 +75,9 @@ class PicoScopeWorker(Worker):
         rich_print(f"---------- Begin transition to Manual: ----------", color=BLUE)
         # Save the data from complete buffers into hdf5 file
         # wait until all samples are collected, blocking the shot exit
-        while not self.pico.stop_sampling_event.is_set() and not self.stop_writing_flag:
-            time.sleep(0.01)
+        while not self.stop_writing_flag:
+            if self.pico.stop_sampling_event.wait(timeout=0.1):
+                break
 
         channels = sorted(self.pico.complete_buffers.keys())
 
@@ -131,6 +134,10 @@ class PicoScope(object):
         self.stop_sampling_event = threading.Event() # indicates the moment the fetching stoped, and the writing can begin
         self.stop_sampling_event.clear()
 
+        # Triggering
+        self.trigger_event = threading.Event()
+        self.trigger_event.clear()
+
         self.buffers = {} # in adc
         self.complete_buffers = {} # in adc
 
@@ -161,7 +168,7 @@ class PicoScope(object):
 
     def stop_sampling(self):
         self.status["stopUnit"] = ps.ps4000aStop(self.chandle)
-        assert_pico_ok(self.status["openUnit"])
+        assert_pico_ok(self.status["stopUnit"])
 
     def close_unit(self):
         self.status["closeUnit"] = ps.ps4000aCloseUnit(self.chandle)
@@ -220,14 +227,13 @@ class PicoScope(object):
 
         def streaming_callback(handle, noOfSamples, startIndex, overflow, triggerAt, triggered, autoStop, param):
             self.was_called_back = True
-            trigger_now = False
-            if triggered != 0 and not self.was_triggered:
-                self.was_triggered = True
-                trigger_now = True
+
+            if triggered != 0 and not self.trigger_event.is_set():
+                self.trigger_event.set()
                 self.triggered_at = triggerAt
                 print(f"\n [INFO] Was Triggered at {self.triggered_at}")
 
-            if self.was_triggered or trigger_now:
+            if self.trigger_event.is_set():
                 dest_end = self.next_sample + noOfSamples
                 source_end = startIndex + noOfSamples
 
@@ -250,11 +256,11 @@ class PicoScope(object):
         c_func_ptr = ps.StreamingReadyType(streaming_callback)
 
         def fetching():
-            while self.next_sample < self.total_samples and not self.auto_stop_outer:
+            while self.next_sample < self.total_samples and not self.auto_stop_outer and not self.stop_sampling_event.is_set():
                 self.was_called_back = False
                 self.status["getStreamingLastestValues"] = ps.ps4000aGetStreamingLatestValues(self.chandle, c_func_ptr, None)
                 if not self.was_called_back:
-                    time.sleep(0.01)
+                    time.sleep(0.001)
 
             self.stop_sampling_event.set() # now the writing can start
             print("[WARNING] Fetching is finished ... No more data is being collected")
