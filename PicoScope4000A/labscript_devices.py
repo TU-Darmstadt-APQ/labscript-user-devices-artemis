@@ -39,6 +39,7 @@ class PicoScope4000A(Device):
     allowed_children = [PicoAnalogIn]
 
     @set_passed_properties({"connection_table_properties": ["serial_number",
+                                                            "is_master",
                                                   "siggen_config",
                                                   "simple_trigger_config",
                                                   "trigger_conditions_config",
@@ -50,11 +51,12 @@ class PicoScope4000A(Device):
                                                   "rapid_block_config",
                                                   "run_mode_config"
                                                   ]}) # use in BLACS_tab
-    def __init__(self, name, serial_number=None, **kwargs):
+    def __init__(self, name, serial_number=None, is_master=False, **kwargs):
         super().__init__(name, parent_device=None, connection='None', **kwargs)
         self.BLACS_connection = serial_number # i dont know but why not
         self.serial_number = serial_number # if None, opens the first scope found
 
+        self.is_master = is_master
         self.siggen_config = {}
         self.simple_trigger_config =  {}
         self.trigger_conditions_config = []
@@ -237,7 +239,8 @@ class PicoScope4000A(Device):
     def generate_code(self, hdf5_file):
         super().generate_code(hdf5_file)
         group = hdf5_file.create_group(f'/devices/{self.name}')
-
+        # ---------------------------------------- Save the is_master attribute ----------------------------------------
+        group.attrs['is_master'] = self.is_master # boolean
         #  -------------------------------------- Save channel configs -------------------------------------------------
         channels_dtypes = [
             ('channel', 'S32'),

@@ -13,10 +13,26 @@ from picosdk.ps4000a import ps4000a as ps
 from picosdk.functions import adc2mV, assert_pico_ok, mV2adc
 from picosdk.constants import PICO_STATUS
 
+import zmq
+
+
 BLUE = '#66D9EF'
 
 class PicoScopeWorker(Worker):
     def init(self):
+        # Set the communication server for master and slave picoscopes
+        self.ctx = zmq.Context()
+
+        if self.is_master:
+            self.sock = self.ctx.socket(zmq.PUB)
+            self.sock.bind("tcp://127.0.0.1:6001")
+            self.wait_for_hardware_trigger()
+        else:
+            self.sock = self.ctx.socket(zmq.SUB)
+            self.sock.connect("tcp://127.0.0.1:6001")
+            self.sock.subscribe(b"")
+            self.start_zmq_listener()
+
         self.pico = PicoScope(self.serial_number)
 
         self.h5_file = None
@@ -24,12 +40,41 @@ class PicoScopeWorker(Worker):
 
         self.stop_writing_flag = False
 
+    def start_zmq_listener(self):
+        """For the slave only: wait for trigger signal from master."""
+
+        def listen():
+            while True:
+                msg = self.sock.recv()
+                if msg == b"TRIGGER":
+                    print(f"[{self.device_name}] Received trigger from master")
+                    self.trigger_event.set()
+                    break
+
+        self.zmq_thread = threading.Thread(target=listen, daemon=True)
+        self.zmq_thread.start()
+
+    def wait_for_hardware_trigger(self):
+        """For master only: waits for hardware trigger and send the TRIGGER signal to slave(s)."""
+
+        def wait_for_trigger():
+            while True:
+                if self.pico.trigger_event.is_set():
+                    self.sock.send(b"TRIGGER")
+
+        self.waiting_thread = threading.Thread(target=wait_for_trigger, daemon=True)
+        self.waiting_thread.start()
+
     def shutdown(self):
         # stop fetching thread
         if hasattr(self.pico, "stop_sampling_event"):
             self.pico.stop_sampling_event.set()
         if getattr(self.pico, "fetching_thread") is not None:
             self.pico.fetching_thread.join()
+        if getattr(self, "waiting_thread") is not None:
+            self.waiting_thread.join()
+        if getattr(self, "zmq_thread") is not None:
+            self.zmq_thread.join()
 
         # stop sampling and close unit
         self.pico.stop_sampling()

@@ -125,11 +125,13 @@ class PicoScopeTab(DeviceTab):
         # look up the serial number
         serial = device.properties["serial_number"]
         active_mode = device.properties["run_mode_config"]['active_mode']
+        is_master = device.properties["is_master"]
         # Start a worker process
         self.create_worker(
             'main_worker',
             'user_devices.PicoScope4000A.blacs_workers.PicoScopeWorker',
             {"serial_number": serial,
+             "is_master": is_master,
              "simple_trigger": self.worker_kwargs.get("simple_trigger", {}),
              "channels_configs": self.worker_kwargs.get("channels_configs", []),
              "trigger_conditions": self.worker_kwargs.get("trigger_conditions", []),
