@@ -22,6 +22,7 @@ from ids_peak import ids_peak_ipl_extension
 from datetime import datetime as dt
 
 import os
+from user_devices.logger_config import logger
 
 BLUE = '#66D9EF'
 RED = '#FF6347'
@@ -241,22 +242,28 @@ class IDS_Camera(object):
         """Return current value of attribute of the given name"""
         try:
             node = self.node_map.FindNode(name)
-            if isinstance(node, ids_peak.EnumerationNode):
-                value = node.CurrentEntry()
+            if isinstance(node, ids_peak.FloatNode) or isinstance(node, ids_peak.IntegerNode):
+                value = str(node.Value()) + node.Unit()
+            elif isinstance(node, ids_peak.CategoryNode):
+                value = [sub_node.Name() for sub_node in node.SubNodes()]
+            elif isinstance(node, ids_peak.EnumerationNode):
+                value = node.CurrentEntry().SymbolicValue()
             elif isinstance(node, ids_peak.CommandNode):
-                value = node.IsDone()
-            elif isinstance(node, ids_peak.RegisterNode):
-                value = "Register Node: Address: " + f"{node.Address()}"
-            elif isinstance(node.Type(), ids_peak.EnumerationEntryNode):
-                value = node.FindSelectedNode(name=name).Name()
+                value = "is_done=" + str(node.IsDone())
             elif isinstance(node, ids_peak.Node):
-                value = node.Type() # todo: value ?
+                value = {
+                    "name": node.Name(),
+                    "display_name": node.DisplayName(),
+                    "type": node.Type()
+                }
             else:
                 value = node.Value()
-            return value
-
+        except ids_peak.InternalErrorException as e:
+            value = f"Cannot evaluate: {e}"
         except Exception as e:
             raise Exception(f"Failed to get attribute {name}. {e}")
+
+        return value
 
     def get_attribute_names(self, visibility_level, writeable_only=True):
         """Return a list of all attribute names of readable attributes, for the given
@@ -270,7 +277,7 @@ class IDS_Camera(object):
                         attributes.append(node.Name())
             else:
                 for node in self.node_map.Nodes():
-                    if node.Visibility() == visibility_level and node.IsReadable():
+                    if node.Visibility() == visibility_level and node.IsReadable() and not isinstance(node, ids_peak.Node):
                         attributes.append(node.Name())
         except Exception:
             raise
@@ -335,8 +342,6 @@ class IDS_Camera(object):
             self._datastream.QueueBuffer(buffer)  # free buffer
             break
 
-        # print("[INFO] Terminate grabbing")
-
         return np_image
 
     def grab_multiple(self, images, n_images:int, timeout_ms=None):
@@ -344,17 +349,23 @@ class IDS_Camera(object):
         self.all_collected.clear()
 
         for i in range(n_images):
-            np_image = self.grab(timeout_ms)
-            if np_image is None:
-                raise ValueError("Failed to grab image.")
-            else:
-                print(np_image.shape)
+            while True:
+                if self.stop_event.is_set():
+                    print("Abort during acquisition.")
+                    return
+                try:
+                    np_image = self.grab(timeout_ms)
+                except Exception as e:
+                    rich_print(f"[ERROR] Exception while grabbing image {i + 1}: {e}", color=RED)
+                    continue
+
                 images.append(np_image)
+                print(f"\nGot image {i + 1} of {n_images}.\n")
+                break
 
-            print(f"\nGot image {i+1} of {n_images}.\n")
-
-        print("[DEBUG] Existing grab_multiple ")
         self.all_collected.set()
+        self.stop_event.set()
+        print("[INFO] Finished grabbing all images.")
 
     def configure_acquisition(self):
         """Flush queue, clear all old buffers if given, allocate and announce buffers"""
@@ -437,19 +448,11 @@ class IDS_Camera(object):
         print("[INFO] Acquisition is paused. Buffers are discarded, but still announced ")
 
     def abort_acquisition(self):
-        # todo: Error: no such node
-        self.node_map.FindNode("AcquisitionAbort").Execute()
-        # Check if the command has finished before you continue (optional)
-        self.node_map.FindNode("AcquisitionAbort").WaitUntilDone()
+        """Aborts the grabbing thread. """
         self.stop_event.set()
 
     def close(self):
-        # stops acquisition if running
-        if self._acquisition_running:
-            self.stop_acquisition()
-
-        self.stop_event.set()
-
+        # fixme: worker timed out
         ids_peak.Library.Close()
 
     def configure_freerun_mode(self, frame_rate):
@@ -530,7 +533,7 @@ class IDSWorker(IMAQdxCameraWorker):
         visibility_level_mapping = {'Simple': 0,
                                     'Intermediate': 1,
                                     'Advanced': 2}
-        attrs = self.get_attributes_as_dict(visibility_level_mapping[visibility_level])
+        attrs = self.get_attributes_as_dict(visibility_level_mapping[visibility_level], True)
         # Format it nicely:
         lines = [f'    {repr(key)}: {repr(value)},' for key, value in attrs.items()]
         dict_repr = '\n'.join(['{'] + lines + ['}'])
@@ -710,25 +713,22 @@ class IDSWorker(IMAQdxCameraWorker):
         return True
 
     def abort(self):
-        if self.acquisition_thread is not None and self.acquisition_thread.is_alive():
-            rich_print("[WARNING] ABORTING: Acquisition thread did not finish. ", color=RED)
-            # self.camera.abort_acquisition()
-            self.acquisition_thread.join(timeout=1)
+        if self.acquisition_thread is not None:
+            if self.acquisition_thread.is_alive():
+                rich_print("[WARNING] ABORTING: Acquisition thread did not finish. ", color=RED)
+                self.camera.abort_acquisition()
+            self.acquisition_thread.join()
             self.acquisition_thread = None
             self.camera.stop_acquisition()
-        self.camera.stop_event.set() # stop grabbing
         self.images = None
         self.n_images = None
         self.attributes_to_save = None
+        self.exposures = None
         self.acquisition_thread = None
         self.h5_filepath = None
-        self.acquisition_timeout = None
+        self.stop_acquisition_timeout = None
         self.exception_on_failed_shot = None
 
-        # Resume continuous acquisition, if any:
-        if self.continuous_thread is not None and self.continuous_thread.is_alive():
-            self.stop_continuous(pause=False)
-            self.continuous_thread.join(timeout=1)
         return True
 
     def abort_buffered(self):
@@ -742,8 +742,9 @@ class IDSWorker(IMAQdxCameraWorker):
 
     def shutdown(self):
         self.abort()
+        if self.continuous_thread is not None:
+            self.stop_continuous()
         self.camera.close()
-        # fixme: worker timed out
 
     def snap(self):
         ipl_image = self.camera.snap()
@@ -774,6 +775,7 @@ class IDSWorker(IMAQdxCameraWorker):
     def stop_continuous(self, pause=False):
         self.camera.stop_event.set()
         self.continuous_thread.join()
+        self.continuous_thread = None
 
         if pause:
             self.camera.pause_acquisition()
