@@ -13,7 +13,7 @@ class CAENWorker(Worker):
     def init(self):
         """Initializes connection to CAEN device (direct Serial or USB or Ethernet)"""
         self.final_values = {}
-        self.caen = Caen(self.port, self.baud_rate, self.vid, self.pid, self.serial_number)
+        self.caen = Caen(self.port, self.baud_rate, vid=self.vid, pid=self.pid, verbose=True, serial_number=self.serial_number)
 
         # for running the buffered experiment in a separate thread:
         self.thread = None
@@ -91,7 +91,6 @@ class CAENWorker(Worker):
         self.thread = threading.Thread(target=self._run_experiment_sequence, args=(events,))
         self.thread.start()
 
-        rich_print(f"---------- END transition to Buffered: ----------", color=BLUE)
         return
         
     def _run_experiment_sequence(self, events):
@@ -136,12 +135,8 @@ class CAENWorker(Worker):
         """transitions the device from buffered to manual mode to read/save measurements from hardware
         to the shot h5 file as results. 
         Runs at the end of the shot."""
-
-        self.thread.join()
-        if not self._finished_event.is_set():
-            print("WARNING: experiment sequence did not finish properly.")
-        else:
-            print("Experiment sequence completed successfully.")
+        self._finished_event.wait()
+        rich_print(f"---------- Begin transition to Manual: ----------", color=BLUE)
         return True
 
     def abort_transition_to_buffered(self):

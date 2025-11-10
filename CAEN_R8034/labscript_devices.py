@@ -16,7 +16,7 @@ class CAEN(IntermediateDevice):
     description = 'CAEN_R8034'
     allowed_children = [AnalogOut]
 
-    @set_passed_properties({"connection_table_properties": ["port", "baud_rate", "pid", "vid", "serial_number"],
+    @set_passed_properties({"connection_table_properties": ["port", "baud_rate", "pid", "vid", "serial_number", "bipol"],
                             "device_properties": ["bipol"]})
     def __init__(self, name, port=None, vid=None, pid=None, baud_rate=9600, serial_number=None, bipol=False, parent_device=None, connection=None, **kwargs):
         IntermediateDevice.__init__(self, name, parent_device, **kwargs)

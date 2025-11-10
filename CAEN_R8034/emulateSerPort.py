@@ -11,6 +11,7 @@ In the user_devices directory, run the following command:
 """
 import os, pty, time
 from logger_config import logger
+import random
 
 def read_command(master):
     """ Reads the command until the '\r' character is encountered.
@@ -36,13 +37,13 @@ def test_serial():
             # logger.debug(f"[CAEN] command from remote: {command} ")
             if command.startswith("$CMD:SET"):
                 response = "#CMD:OK\r\n"
-                os.write(master, response.encode())
             elif command.startswith("$CMD:MON"):
                 response = "#CMD:OK,VAL:2000.0\r\n"
-                os.write(master, response.encode())
+            elif command.startswith("$CMD:INFO"):
+                response = random.choice(["#CMD:OK,VAL:DT2000\r\n", "#CMD:OK,VAL:OK200\r\n"])
             else:
                 response = "err\r\n"
-                os.write(master, response.encode())
+            os.write(master, response.encode())
          
 if __name__ == "__main__":
     test_serial()

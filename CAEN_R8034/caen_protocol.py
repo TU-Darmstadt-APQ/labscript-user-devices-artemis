@@ -46,7 +46,7 @@ class Caen:
 
         for ch in range(8):
             self.enable_channel(ch, True)
-            self.check_channel_status(ch)
+            # self.check_channel_status(ch)
 
         if not (self.using_serial or self.using_ethernet):
             raise LabscriptError("No valid connection method (USB, Serial, Ethernet) provided.")
@@ -74,7 +74,7 @@ class Caen:
                 if self.pid.upper() in p.hwid and self.vid.upper() in p.hwid:
                     tmp_serial = serial.Serial(p.device, self.baud_rate, timeout=1) # Open temporary to check serial_number
                     response = self.query_serial(tmp_serial)
-                    print(repr(response), repr(self.serial_number)) # DEBUG
+                    print(f"[DEBUG] Serial numbers: (queried, given) {repr(response)}, {repr(self.serial_number)}")
                     if response == self.serial_number:
                         self.serial = tmp_serial
                         port_found = True

@@ -13,9 +13,8 @@ class CAENTab(DeviceTab):
         self.base_step = 10
         self.base_decimals = 4
 
-        connection_table = self.settings['connection_table']
-        properties = connection_table.find_by_name(self.device_name).properties
-        bipol = properties.get('bipol')
+        device = self.settings['connection_table'].find_by_name(self.device_name)
+        bipol = device.properties['bipol']
         analog_properties = {}
 
         for i in range(8):

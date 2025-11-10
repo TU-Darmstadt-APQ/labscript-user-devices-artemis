@@ -29,23 +29,45 @@ from user_devices.logger_config import logger
 def init_alvium():
     AlviumCamera(name='AlliedVision', serial_number="0C9X6")
 
-def init_CAEN(clockline):
+def init_CAEN_bipol(clockline):
     CAEN(
-        name='voltage_source_serial',
+        name='CAEN_bipol',
         parent_device=clockline,
-        port='/dev/pts/1',
+        port='/dev/pts/4',
         # vid="21e1",
         # pid="0014",
-        baud_rate=9600
+        baud_rate=9600,
+        bipol=True,
+        serial_number="DT2000"
     )
-    AnalogOut(name='sikler1_north', parent_device=voltage_source_serial, connection='CH 0', default_value=0)
-    AnalogOut(name='sikler1_south', parent_device=voltage_source_serial, connection='CH 1', default_value=0)
-    AnalogOut(name='sikler1_east', parent_device=voltage_source_serial, connection='CH 2', default_value=0)
-    AnalogOut(name='sikler1_west', parent_device=voltage_source_serial, connection='CH 3', default_value=0)
-    AnalogOut(name='sikler2_north', parent_device=voltage_source_serial, connection='CH 4', default_value=0)
-    AnalogOut(name='sikler2_south', parent_device=voltage_source_serial, connection='CH 5', default_value=0)
-    AnalogOut(name='sikler2_east', parent_device=voltage_source_serial, connection='CH 6', default_value=0)
-    AnalogOut(name='sikler2_west', parent_device=voltage_source_serial, connection='CH 7', default_value=0)
+    AnalogOut(name='sikler1_north', parent_device=CAEN_bipol, connection='CH 0', default_value=0)
+    AnalogOut(name='sikler1_south', parent_device=CAEN_bipol, connection='CH 1', default_value=0)
+    AnalogOut(name='sikler1_east', parent_device=CAEN_bipol, connection='CH 2', default_value=0)
+    AnalogOut(name='sikler1_west', parent_device=CAEN_bipol, connection='CH 3', default_value=0)
+    AnalogOut(name='sikler2_north', parent_device=CAEN_bipol, connection='CH 4', default_value=0)
+    AnalogOut(name='sikler2_south', parent_device=CAEN_bipol, connection='CH 5', default_value=0)
+    AnalogOut(name='sikler2_east', parent_device=CAEN_bipol, connection='CH 6', default_value=0)
+    AnalogOut(name='sikler2_west', parent_device=CAEN_bipol, connection='CH 7', default_value=0)
+
+def init_CAEN_monopol(clockline):
+    CAEN(
+        name='CAEN_monopol',
+        parent_device=clockline,
+        port='/dev/pts/6',
+        # vid="21e1",
+        # pid="0014",
+        baud_rate=9600,
+        bipol=False,
+        serial_number="OK300"
+    )
+    AnalogOut(name='aaa', parent_device=CAEN_monopol, connection='CH 0', default_value=0)
+    AnalogOut(name='bbb', parent_device=CAEN_monopol, connection='CH 1', default_value=0)
+    AnalogOut(name='ccc', parent_device=CAEN_monopol, connection='CH 2', default_value=0)
+    AnalogOut(name='ddd', parent_device=CAEN_monopol, connection='CH 3', default_value=0)
+    AnalogOut(name='eee', parent_device=CAEN_monopol, connection='CH 4', default_value=0)
+    AnalogOut(name='fff', parent_device=CAEN_monopol, connection='CH 5', default_value=0)
+    AnalogOut(name='ggg', parent_device=CAEN_monopol, connection='CH 6', default_value=0)
+    AnalogOut(name='hhh', parent_device=CAEN_monopol, connection='CH 7', default_value=0)
 
 def init_picoscope_178():
     picoscope = PicoScope4000A(name='picoscope',
@@ -155,12 +177,13 @@ def build_connectiontable():
     # init_HV_250_8(clockline)
     # init_BS_341A(clockline)
     # init_UM(pseudoclock.clockline)
-    # init_CAEN(clockline)
+    init_CAEN_bipol(clockline)
+    init_CAEN_monopol(clockline)
     # init_HV_200_8(clockline)
     # init_BNC_575()
     # init_IDS(camera_trigger)
     # init_IDS_UI()
-    init_picoscope_173()
+    # init_picoscope_173()
     # init_alvium()
 
 if __name__ == '__main__':
@@ -168,9 +191,9 @@ if __name__ == '__main__':
     t = 0
     add_time_marker(t, "Start", verbose=True)
     start()
-    picoscope_173.set_stream_sampling(sampling_rate=4e6, no_post_trigger_samples=10000)
-    picoscope_173.set_simple_trigger(source="channel_A", threshold=2.9, direction='rising', delay_samples=0, auto_trigger_s=0)
-    picoscope_173.signal_generator_config(offset_voltage=0, pk2pk=2, wave_type='square')
+    # picoscope_173.set_stream_sampling(sampling_rate=4e6, no_post_trigger_samples=10000)
+    # picoscope_173.set_simple_trigger(source="channel_A", threshold=2.9, direction='rising', delay_samples=0, auto_trigger_s=0)
+    # picoscope_173.signal_generator_config(offset_voltage=0, pk2pk=2, wave_type='square')
 
     stop(1)
     # picoscope_178.set_stream_sampling(sampleInterval_ns=250, noPostTriggerSamples=10000)
