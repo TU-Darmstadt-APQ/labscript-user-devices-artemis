@@ -13,7 +13,7 @@ class CAENWorker(Worker):
     def init(self):
         """Initializes connection to CAEN device (direct Serial or USB or Ethernet)"""
         self.final_values = {}
-        self.caen = Caen(self.port, self.baud_rate, self.vid, self.pid)
+        self.caen = Caen(self.port, self.baud_rate, self.vid, self.pid, self.serial_number)
 
         # for running the buffered experiment in a separate thread:
         self.thread = None

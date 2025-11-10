@@ -6,6 +6,7 @@ from labscript import LabscriptError
 from user_devices.logger_config import logger
 import time
 import serial.tools.list_ports
+import re
 
 
 class Caen:
@@ -16,37 +17,30 @@ class Caen:
         attribute = {"MON", "SET", "INFO"}
         chval = 0..N with N = number of channels, N for group
     """
-    def __init__(self, port=None, baud_rate=9600, vid=None, pid=None, verbose=True):
+    def __init__(self, port=None, baud_rate=9600, vid=None, pid=None, verbose=True, serial_number=None):
         self.verbose = verbose
+        self.serial_number = serial_number
         # Connection types
-        self.using_usb = False
         self.using_serial = False
         self.using_ethernet = False
 
-        # USB attr
-        self.vid = vid
-        self.pid = pid
-        self.dev = None
-        self.ep_in = None
-        self.ep_out = None
-
-        # Serial attr
-        self.serial = None
-        self.port = port
-        self.baud_rate = baud_rate
-
-        # Ethernet attr
-        self.socket = None
-        self.ethernet_host = '192.168.0.250'
-        self.ethernet_port = 1470
-
-        if self.vid is not None and self.pid is not None:
-            self.using_usb = True
+        if vid is not None and pid is not None:
+            self.vid = vid
+            self.pid = pid
             self.open_usb()
-        elif port is not None:
             self.using_serial = True
+
+        elif port is not None:
+            self.serial = None
+            self.port = port
+            self.baud_rate = baud_rate
             self.open_serial()
+            self.using_serial = True
+
         else:
+            self.socket = None
+            self.ethernet_host = '192.168.0.250'
+            self.ethernet_port = 1470
             self.using_ethernet = True
             self.open_ethernet()
 
@@ -54,7 +48,7 @@ class Caen:
             self.enable_channel(ch, True)
             self.check_channel_status(ch)
 
-        if not (self.using_usb or self.using_serial or self.using_ethernet):
+        if not (self.using_serial or self.using_ethernet):
             raise LabscriptError("No valid connection method (USB, Serial, Ethernet) provided.")
 
     def open_ethernet(self):
@@ -77,20 +71,45 @@ class Caen:
             port_found = False
             ports = list(serial.tools.list_ports.comports())
             for p in ports:
-                if self.pid.upper() and self.vid.upper() in p.hwid:
-                    self.port = p.device
-                    self.open_serial()
-                    port_found = True
+                if self.pid.upper() in p.hwid and self.vid.upper() in p.hwid:
+                    tmp_serial = serial.Serial(p.device, self.baud_rate, timeout=1) # Open temporary to check serial_number
+                    response = self.query_serial(tmp_serial)
+                    print(repr(response), repr(self.serial_number)) # DEBUG
+                    if response == self.serial_number:
+                        self.serial = tmp_serial
+                        port_found = True
+                        break
+                    else:
+                        tmp_serial.close() # Close temporal serial connection
+                        continue
+
             if not port_found:
                 raise LabscriptError(f"USB connection failed: COM port with pid:vid={self.pid}:{self.vid} not found.")
-            self.using_serial = True
-            self.using_usb = False
+
         except Exception as e:
             self.close_usb()
             raise LabscriptError(f"USB connection failed: {e}")
 
     def close_usb(self):
         self.close_serial()
+
+    def query_serial(self, serial_obj):
+        cmd_ser = "$CMD:INFO,PAR:BDSNUM"
+        data = (cmd_ser + '\r\n').encode()
+        try:
+            serial_obj.write(data)
+            response = serial_obj.readline().decode().strip()
+            serial_no = self._parse_response(response, expect_val=True)
+            return serial_no
+        except Exception as e:
+            serial_obj.close()
+            raise LabscriptError(f"Failed to query serial: {e}")
+
+    def check_serial_number(self, serial_no):
+        cmd_ser = "$CMD:INFO,PAR:BDSNUM"
+        response =  self.query(cmd_ser, expect_val=True)
+        print(repr(serial_no), repr(response))
+        return serial_no == response
 
     def open_serial(self):
         try:
@@ -103,12 +122,10 @@ class Caen:
         self.serial.close()
 
     def close_connection(self):
-        if self.using_usb:
-            self.close_usb()
-        elif self.using_serial:
-            self.close_serial()
-        elif self.using_ethernet:
-            self.close_ethernet()
+        if self.serial and self.serial.is_open:
+            self.serial.close()
+        if self.socket:
+            self.socket.close()
 
     ### board commands
     def set_control_mode(self, mode: str):
@@ -288,10 +305,7 @@ class Caen:
     def send_to_CAEN(self, cmd_str):
         data = (cmd_str + '\r\n').encode()
         try:
-            if self.using_usb:
-                self.ep_out.write(data)
-                time.sleep(0.1)
-            elif self.using_serial:
+            if self.using_serial:
                 self.serial.write(data)
             elif self.using_ethernet:
                 self.socket.sendall(data)
@@ -303,20 +317,14 @@ class Caen:
 
     def receive_from_CAEN(self):
         try:
-            if self.using_usb:
-                response = self.ep_in.read(64, timeout=3)
-                response_str = bytes(response).decode('ascii', errors='ignore')
-                return response_str
             if self.using_serial:
-                response = self.serial.readline().decode().strip()
-                return response
+                return self.serial.readline().decode().strip()
             if self.using_ethernet:
-                response = self.socket.recv(512) # buffer read bytes=512
-                return response.decode(errors='ignore').strip()
+                return self.socket.recv_until_delim('\r\n').decode(errors='ignore').strip()
             return None
         except Exception as e:
             logger.error(f"[CAEN] Read from CAEN failed: {e}")
-            return 'USB_ERROR' if self.using_usb else 'SERIAL_ERROR' if self.using_serial else 'Ethernet_ERROR'
+            return 'SERIAL_ERROR' if self.using_serial else 'ETH_ERROR'
 
     def _check_response(self, response: str):
         """Raises descriptive errors based on CAEN serial error codes.
@@ -335,20 +343,50 @@ class Caen:
             if response.startswith(prefix):
                 raise LabscriptError(message)
 
-    def query(self, cmd: str, expect_val: bool = False) -> str | float:
+    def query(self, cmd: str, expect_val:bool=False) -> str | float:
         self.send_to_CAEN(cmd)
         response = self.receive_from_CAEN()
-        self._check_response(response)
+        resp = self._parse_response(response, expect_val)
 
         if self.verbose:
             print(f"Sent: {cmd}\tResponse: {response}")
         logger.info(f"[CAEN] Sent: {cmd}\tReceived: {response}")
 
+        return resp
+        # if expect_val:
+        #     parts = response.strip().split(',')
+        #     if len(parts) < 2 or not parts[1].startswith("VAL:"):
+        #         raise LabscriptError(f"[CAEN] Unexpected response format: {response}")
+        #     return parts[1][4:]
+        # return response
+
+    def _parse_response(self, response: str, expect_val: bool = False) -> str | float | None:
+        response = response.strip()
+
+        # Map of CAEN error prefixes
+        error_map = {
+            "#CMD:ERR": "Wrong attribute, should be 'SET'",
+            "#LOC:ERR": "SET command in local mode",
+            "#VAL:ERR": "Wrong 'VAL' field value in SET command",
+            "#CH:ERR": "Wrong 'CH' field value",
+            "#PAR:ERR": "Wrong 'PAR' field value"
+        }
+        for prefix, msg in error_map.items():
+            if response.startswith(prefix):
+                raise LabscriptError(msg)
+
+        # If VAL is expected, try to extract it
         if expect_val:
-            parts = response.strip().split(',')
-            if len(parts) < 2 or not parts[1].startswith("VAL:"):
-                raise LabscriptError(f"[CAEN] Unexpected response format: {response}")
-            return float(parts[1][4:])
+            match = VAL_RE.search(response)
+            if not match:
+                raise LabscriptError(f"Expected VAL field, got: {response}")
+            val_str = match.group(1)
+            try:
+                return float(val_str)
+            except ValueError:
+                return val_str  # Return as string if cannot convert
 
-        return response
+        # No VAL expected;
+        return None
 
+VAL_RE = re.compile(r'VAL:(.+)')

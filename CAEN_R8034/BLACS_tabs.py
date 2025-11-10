@@ -12,17 +12,26 @@ class CAENTab(DeviceTab):
         self.base_max = 6000
         self.base_step = 10
         self.base_decimals = 4
-        self.num_AO = 8
-        
+
+        connection_table = self.settings['connection_table']
+        properties = connection_table.find_by_name(self.device_name).properties
+        bipol = properties.get('bipol')
         analog_properties = {}
-        for i in range(self.num_AO):
+
+        for i in range(8):
+            if bipol and i < 4:
+                ch_min, ch_max = -self.base_max, self.base_min
+            else:
+                ch_min, ch_max = self.base_min, self.base_max
+
             analog_properties['CH %d' % i] = {
                 'base_unit': self.base_unit,
-                'min': self.base_min,
-                'max': self.base_max,
+                'min': ch_min,
+                'max': ch_max,
                 'step':self.base_step,
                 'decimals': self.base_decimals,
                 }
+
         # Create and save AO objects
         self.create_analog_outputs(analog_properties)
         # Create widgets for AO objects
@@ -53,13 +62,15 @@ class CAENTab(DeviceTab):
         pid = device.properties["pid"]
         port = device.properties["port"]
         baud_rate = device.properties["baud_rate"]
+        serial_number = device.properties["serial_number"]
         
         worker_kwargs = {
             "name": self.device_name + '_main',
             "port": port,
             "vid": vid,
             "pid": pid,
-            "baud_rate": baud_rate
+            "baud_rate": baud_rate,
+            "serial_number": serial_number
         }
         
         self.create_worker(
