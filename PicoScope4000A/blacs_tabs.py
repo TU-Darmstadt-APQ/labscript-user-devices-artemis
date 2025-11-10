@@ -2,12 +2,73 @@ from blacs.tab_base_classes import Worker, define_state
 from blacs.device_base_class import DeviceTab
 from user_devices.logger_config import logger
 from blacs.tab_base_classes import MODE_MANUAL
-from qtutils.qt.QtCore import *
-from qtutils.qt.QtGui import *
+from labscript_utils.ls_zprocess import ZMQServer
+from qtutils.qt import QtWidgets, QtGui, QtCore
+
 from qtutils.qt.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QTableWidget, QTableWidgetItem, QTabWidget
 )
+from labscript_utils.ls_zprocess import ZMQServer
+from qtutils import inmain_decorator
+import pyqtgraph as pg
+import json
+import numpy as np
+
+
+class TraceReceiver(ZMQServer):
+
+    def __init__(self, trace_view, total_samples, channel_names):
+        ZMQServer.__init__(self, port=None, dtype='multipart')
+        self.trace_view = trace_view
+        self.total_samples = total_samples
+        self.channel_names = channel_names
+
+    @inmain_decorator(wait_for_return=True)
+    def handler(self, data):
+        self.send([b'ok'])
+        md = json.loads(data[0])
+        traces = np.frombuffer(memoryview(data[1]), dtype=md['dtype'])
+        traces = traces.reshape(md['shape'])
+        sample_interval = md['sample_interval']
+        triggered_at = md['triggered_at']
+        times = np.linspace(0, (self.total_samples - 1) * sample_interval, self.total_samples)
+
+        colors = [(102, 0, 204), # purple
+                  (0, 0, 204), # blue
+                  (0, 204, 204), # cian
+                  (102, 240, 0), # green
+                  (204, 102, 0), # orange
+                  (204, 0, 0), # red
+                  (204, 0, 102), # pink
+                  (96, 96, 96)] # gray
+
+        # TODO: add dot instead of line??
+        # clear the plot
+        # add legend
+
+        for i in range(len(self.channel_names)):
+            self.plot_line(self.channel_names[i], times, traces[:,i], colors[i])
+
+        self.trace_view.addLine(x=triggered_at*sample_interval, y=traces[triggered_at:1], width=2) # endless vertical line where the trigger occurred.
+
+        QtWidgets.QApplication.instance().sendPostedEvents()
+        return self.NO_RESPONSE
+
+
+    def plot_line(self, name, time, trace, color):
+        pen = pg.mkPen(color=color)
+        self.trace_view.plot(
+            time,
+            trace,
+            name=name,
+            pen=pen,
+            # symbol="+",
+            # symbolSize=15,
+            # symbolBrush=brush,
+        )
+
+
 
 class PicoScopeTab(DeviceTab):
     def initialise_GUI(self):
@@ -21,8 +82,18 @@ class PicoScopeTab(DeviceTab):
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs)
 
+        # 0. Traces
+        # todo: scale traces widget
+        self.trace_graph = pg.PlotWidget()
+        self.trace_graph.setBackground('w')
+        self.trace_graph.setLabel("left", "Voltages")
+        self.trace_graph.setLabel("bottom", "Time (ns)")
+        self.trace_graph.showGrid(x=True, y=True)
+        layout.addWidget(self.trace_graph)
+
         # 1. Channels
         channels_configs = [input.properties['channel_config'] for input in device.child_list.values()]
+        channel_names = [ch['name'] for ch in channels_configs]
 
         channels_tab = QWidget()
         channels_layout = QVBoxLayout(channels_tab)
@@ -75,20 +146,11 @@ class PicoScopeTab(DeviceTab):
         sampling_tab = QWidget()
         sampling_layout = QVBoxLayout(sampling_tab)
 
-        block_config = properties.get("block_config", {})
-        if block_config:
-            sampling_layout.addWidget(self.make_table("Block Config", ["Parameter", "Value"], block_config))
-            self.worker_kwargs["block_config"] = block_config
-
-        rapid_block_config = properties.get("rapid_block_config", {})
-        if rapid_block_config:
-            sampling_layout.addWidget(self.make_table("Rapid Block Config", ["Parameter", "Value"], rapid_block_config))
-            self.worker_kwargs["rapid_block_config"] = rapid_block_config
-
         stream_config = properties.get("stream_config", {})
         if stream_config:
             sampling_layout.addWidget(self.make_table("Stream Config", ["Parameter", "Value"], stream_config))
             self.worker_kwargs["stream_config"] = stream_config
+            total_samples = stream_config['no_post_trigger_samples']
 
         self.tabs.addTab(sampling_tab, "Sampling")
 
@@ -108,7 +170,8 @@ class PicoScopeTab(DeviceTab):
 
         self.stream_button = QPushButton("Start Streaming") # start streaming in manual mode
         self.siggen_button = QPushButton("Trigger Signal Generator")
-        self.stream_button.setEnabled(False)   # todo: add functionality
+        self.stream_button.setEnabled(False)
+        self.stream_button.clicked.connect(self.start_sampling)
         self.siggen_button.clicked.connect(self.siggen_trigger)
 
         button_layout.addWidget(self.stream_button)
@@ -116,40 +179,38 @@ class PicoScopeTab(DeviceTab):
         layout.addLayout(button_layout)
 
         logger.debug(self.worker_kwargs)
+
+        self.trace_receiver = TraceReceiver(self.trace_graph, total_samples, channel_names)
         return
 
     def initialise_workers(self):
         # Get properties from connection table.
         device = self.settings['connection_table'].find_by_name(self.device_name)
 
-        # look up the serial number
+        # look up the serial number, series
         serial = device.properties["serial_number"]
-        active_mode = device.properties["run_mode_config"]['active_mode']
-        is_master = device.properties["is_master"]
+        is_4000a = device.properties["is_4000a"]
         # Start a worker process
         self.create_worker(
             'main_worker',
             'user_devices.PicoScope4000A.blacs_workers.PicoScopeWorker',
             {"serial_number": serial,
-             "is_master": is_master,
+             "is_4000a": is_4000a,
              "simple_trigger": self.worker_kwargs.get("simple_trigger", {}),
              "channels_configs": self.worker_kwargs.get("channels_configs", []),
              "trigger_conditions": self.worker_kwargs.get("trigger_conditions", []),
              "trigger_directions": self.worker_kwargs.get("trigger_directions", []),
              "trigger_properties": self.worker_kwargs.get("trigger_properties", []),
              "trigger_delay": self.worker_kwargs.get("trigger_delay", {}),
-             "block_config": self.worker_kwargs.get("block_config", {}),
-             "rapid_block_config": self.worker_kwargs.get("rapid_block_config", {}),
              "stream_config": self.worker_kwargs.get("stream_config", {}),
              "siggen_config": self.worker_kwargs.get("siggen_config", {}),
-             "active_mode": active_mode
+             "image_receiver_port": self.trace_receiver.port,
              }
         )
         self.primary_worker = "main_worker"
 
     def make_table(self, title, headers, data):
         """
-        todo: add table labels
         data: dict | list[dict] | []
         """
         table = QTableWidget()
@@ -181,4 +242,7 @@ class PicoScopeTab(DeviceTab):
     def siggen_trigger(self, button):
         yield (self.queue_work(self.primary_worker, 'siggen_software_trigger'))
 
+    @define_state(MODE_MANUAL, queue_state_indefinitely=True, delete_stale_states=True)
+    def start_sampling(self, button):
+        yield (self.queue_work(self.primary_worker, 'start_sampling'))
 

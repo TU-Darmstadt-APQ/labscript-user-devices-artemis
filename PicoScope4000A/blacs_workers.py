@@ -15,6 +15,7 @@ from picosdk.ps4000a import ps4000a as psa
 from picosdk.ps4000 import ps4000 as ps
 from picosdk.functions import adc2mV, assert_pico_ok, mV2adc
 from picosdk.constants import PICO_STATUS
+from labscript_utils.ls_zprocess import Context
 
 import zmq
 import datetime
@@ -720,6 +721,11 @@ class PicoScopeWorker(Worker):
 
         self.stop_writing_flag = False
 
+        self.image_socket = Context().socket(zmq.REQ)
+        self.image_socket.connect(
+            f'tcp://{self.parent_host}:{self.image_receiver_port}'
+        )
+
 
     def shutdown(self):
         # stop fetching thread
@@ -813,6 +819,8 @@ class PicoScopeWorker(Worker):
 
         data_array = np.column_stack(data_list) # combine horizontally
 
+        self._send_traces_to_parent(data_array)
+
         # Write data
         with h5py.File(self.h5_file, "r+") as f:
             properties = labscript_utils.properties.get(
@@ -837,6 +845,7 @@ class PicoScopeWorker(Worker):
             ds.attrs["channels"] = np.array(channels, dtype=int)
             ds.attrs["trigger_at"] = int(self.pico.triggered_at)
             ds.attrs["sample_interval"] = self.pico.actual_sample_interval
+            ds.attrs["total_samples"] = self.pico.total_samples
 
         print(f"[INFO] Saved {data_array.shape[0]} samples × {data_array.shape[1]} channels")
 
@@ -862,6 +871,16 @@ class PicoScopeWorker(Worker):
         self.pico.stop_sampling_event.clear()
 
         return True
+
+    def _send_traces_to_parent(self, traces):
+        """Send the traces to the GUI to display. This will block if the parent process
+        is lagging behind, in order to avoid a backlog."""
+        metadata = dict(dtype=str(traces.dtype), shape=traces.shape,
+                        sample_interval=self.pico.actual_sample_interval, triggered_at=self.pico.triggered_at)
+        self.image_socket.send_json(metadata, zmq.SNDMORE)
+        self.image_socket.send(traces, copy=False)
+        response = self.image_socket.recv()
+        assert response == b'ok', response
 
     def abort_transition_to_buffered(self):
         return self.transition_to_manual()
