@@ -761,6 +761,7 @@ class PicoScopeWorker(Worker):
         trigger_properties_config = properties["trigger_properties_config"]
         trigger_delay_config = properties["trigger_delay_config"]
         stream_config = properties["stream_config"]
+        self.siggen_config = properties["siggen_config"]
 
         # Configure channels
         for ch in self.channels_configs:
@@ -818,51 +819,42 @@ class PicoScopeWorker(Worker):
             data_list.append(buf_mv)
 
         data_array = np.column_stack(data_list) # combine horizontally
-
         self._send_traces_to_parent(data_array)
 
         # Write data
         with h5py.File(self.h5_file, "r+") as f:
-            properties = labscript_utils.properties.get(
-                f, self.device_name, 'device_properties'
-            )
-            siggen_config = properties["siggen_config"]
-
             group = f.require_group('/data/traces')
+            # dataset per channel
+            dataset_names = self.channel_names
+            dtypes = np.dtype({'names': ['t', 'values'], 'formats': [np.float64, np.float32]})
+            total_samples = self.pico.total_samples
+            times = np.linspace(0, (total_samples - 1) * self.pico.actual_sample_interval, total_samples)
 
-            # Prepare a unique dataset name
-            base_name = self.device_name
-            dataset_name = base_name
-            counter = 1
-            while dataset_name in group:
-                dataset_name = f"{base_name}_{counter}"
-                counter += 1
-
-            ds = group.create_dataset(dataset_name, data=data_array, dtype=np.float32)
-            ds.attrs["channels"] = np.array(channels, dtype=int)
-            ds.attrs["channel_names"] = np.array(self.channel_names, 'S64')
-            ds.attrs["trigger_at"] = int(self.pico.triggered_at)
-            ds.attrs["sample_interval"] = self.pico.actual_sample_interval
-            ds.attrs["total_samples"] = self.pico.total_samples
+            for idx, ds_name in enumerate(dataset_names):
+                data = np.empty(total_samples,dtype=dtypes)
+                data['t'] = times
+                data['values'] = data_list[idx]
+                ds = group.create_dataset(self.device_name + '_' + ds_name, data=data, dtype=dtypes)
+                ds.attrs["trigger_at"] = int(self.pico.triggered_at)
 
         print(f"[INFO] Saved {data_array.shape[0]} samples × {data_array.shape[1]} channels")
 
         # configure the signal generator to use in manual mode
-        if len(siggen_config) > 0:
-            self.pico.gen_signal( int(siggen_config["offset_voltage"] * 1e6),
-                    int(siggen_config["pk2pk"] * 1e6),
-                    siggen_config["wave_type"],
-                    siggen_config["start_frequency"],
-                    siggen_config["stop_frequency"],
-                    siggen_config["increment"],
-                    siggen_config["dwell_time"],
-                    siggen_config["sweep_type"],
-                    siggen_config["operation"],
-                    siggen_config["shots"],
-                    siggen_config["sweeps"],
-                    siggen_config["trigger_type"],
-                    siggen_config["trigger_source"],
-                    siggen_config["ext_in_threshold"])
+        if len(self.siggen_config) > 0:
+            self.pico.gen_signal( int(self.siggen_config["offset_voltage"] * 1e6),
+                    int(self.siggen_config["pk2pk"] * 1e6),
+                    self.siggen_config["wave_type"],
+                    self.siggen_config["start_frequency"],
+                    self.siggen_config["stop_frequency"],
+                    self.siggen_config["increment"],
+                    self.siggen_config["dwell_time"],
+                    self.siggen_config["sweep_type"],
+                    self.siggen_config["operation"],
+                    self.siggen_config["shots"],
+                    self.siggen_config["sweeps"],
+                    self.siggen_config["trigger_type"],
+                    self.siggen_config["trigger_source"],
+                    self.siggen_config["ext_in_threshold"])
 
         # clear all buffered events
         self.pico.trigger_event.clear()
