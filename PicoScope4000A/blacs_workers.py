@@ -828,10 +828,7 @@ class PicoScopeWorker(Worker):
             )
             siggen_config = properties["siggen_config"]
 
-            if '/data/traces' in f:
-                group = f['/data/traces']
-            else:
-                group = f.create_group('/data/traces')
+            group = f.require_group('/data/traces')
 
             # Prepare a unique dataset name
             base_name = self.device_name
@@ -843,6 +840,7 @@ class PicoScopeWorker(Worker):
 
             ds = group.create_dataset(dataset_name, data=data_array, dtype=np.float32)
             ds.attrs["channels"] = np.array(channels, dtype=int)
+            ds.attrs["channel_names"] = np.array(self.channel_names, 'S64')
             ds.attrs["trigger_at"] = int(self.pico.triggered_at)
             ds.attrs["sample_interval"] = self.pico.actual_sample_interval
             ds.attrs["total_samples"] = self.pico.total_samples

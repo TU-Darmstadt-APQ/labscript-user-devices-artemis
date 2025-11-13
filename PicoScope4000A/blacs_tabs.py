@@ -38,36 +38,42 @@ class TraceReceiver(ZMQServer):
                   (0, 0, 204), # blue
                   (0, 204, 204), # cian
                   (102, 240, 0), # green
-                  (204, 102, 0), # orange
+                  (204, 204, 0), # yellow
                   (204, 0, 0), # red
-                  (204, 0, 102), # pink
+                  (255, 51, 255), # pink
                   (96, 96, 96)] # gray
 
-        # TODO: add dot instead of line??
-        # clear the plot
-        # add legend
+        self.trace_view.clear()
 
         for i in range(len(self.channel_names)):
             self.plot_line(self.channel_names[i], times, traces[:,i], colors[i])
 
-        self.trace_view.addLine(x=triggered_at*sample_interval, y=traces[triggered_at:1], width=2) # endless vertical line where the trigger occurred.
+        self.trace_view.addLine(x=triggered_at * sample_interval, y=traces[triggered_at:1], pen=pg.mkPen(color='r', width=1.5, style=QtCore.Qt.DashLine)) # endless vertical line where the trigger occurred.
+        self.plot_dot_trigger(x=triggered_at * sample_interval, y=traces[triggered_at, 0]) # NOTE: Dot on first channel A
 
         QtWidgets.QApplication.instance().sendPostedEvents()
         return self.NO_RESPONSE
 
+    def plot_dot_trigger(self, x, y):
+        """Plots the dot where trigger occurred only on single given channel  """
+        self.trace_view.plot(
+            [x],
+            [y],
+            symbol='o',
+            symbolSize=6.5,
+            symbolBrush='r',
+            symbolPen=None,
+            pen=None
+        )
 
     def plot_line(self, name, time, trace, color):
-        pen = pg.mkPen(color=color)
+        pen = pg.mkPen(color=color, width=1)
         self.trace_view.plot(
             time,
             trace,
             name=name,
             pen=pen,
-            # symbol="+",
-            # symbolSize=15,
-            # symbolBrush=brush,
         )
-
 
 
 class PicoScopeTab(DeviceTab):
@@ -79,21 +85,26 @@ class PicoScopeTab(DeviceTab):
         self.worker_kwargs = {}
 
         layout = self.get_tab_layout()
-        self.tabs = QTabWidget()
-        layout.addWidget(self.tabs)
 
         # 0. Traces
-        # todo: scale traces widget
         self.trace_graph = pg.PlotWidget()
         self.trace_graph.setBackground('w')
-        self.trace_graph.setLabel("left", "Voltages")
+        self.trace_graph.setLabel("left", "Voltages (mV)")
         self.trace_graph.setLabel("bottom", "Time (ns)")
         self.trace_graph.showGrid(x=True, y=True)
-        layout.addWidget(self.trace_graph)
+        self.trace_graph.addLegend()
+        layout.addWidget(self.trace_graph, stretch=1)
+
+        self.tabs_window = QtWidgets.QMainWindow()
+        self.tabs_window.setWindowTitle("Tabs")
+        self.tabs = QTabWidget()
+        self.tabs_window.setCentralWidget(self.tabs)
+        self.tabs_window.resize(400, 300)
+        # layout.addWidget(self.tabs, stretch=0)
 
         # 1. Channels
         channels_configs = [input.properties['channel_config'] for input in device.child_list.values()]
-        channel_names = [ch['name'] for ch in channels_configs]
+        self.channel_names = [ch['name'] for ch in channels_configs]
 
         channels_tab = QWidget()
         channels_layout = QVBoxLayout(channels_tab)
@@ -147,10 +158,9 @@ class PicoScopeTab(DeviceTab):
         sampling_layout = QVBoxLayout(sampling_tab)
 
         stream_config = properties.get("stream_config", {})
-        if stream_config:
-            sampling_layout.addWidget(self.make_table("Stream Config", ["Parameter", "Value"], stream_config))
-            self.worker_kwargs["stream_config"] = stream_config
-            total_samples = stream_config['no_post_trigger_samples']
+        sampling_layout.addWidget(self.make_table("Stream Config", ["Parameter", "Value"], stream_config))
+        self.worker_kwargs["stream_config"] = stream_config
+        total_samples = stream_config['no_post_trigger_samples']
 
         self.tabs.addTab(sampling_tab, "Sampling")
 
@@ -168,19 +178,21 @@ class PicoScopeTab(DeviceTab):
         # static button to use in manual mode
         button_layout = QHBoxLayout()
 
+        self.attributes_button = QPushButton("Attributes")
         self.stream_button = QPushButton("Start Streaming") # start streaming in manual mode
         self.siggen_button = QPushButton("Trigger Signal Generator")
-        self.stream_button.setEnabled(False)
+        self.attributes_button.clicked.connect(self.open_attributes)
         self.stream_button.clicked.connect(self.start_sampling)
         self.siggen_button.clicked.connect(self.siggen_trigger)
 
         button_layout.addWidget(self.stream_button)
         button_layout.addWidget(self.siggen_button)
+        button_layout.addWidget(self.attributes_button)
         layout.addLayout(button_layout)
 
         logger.debug(self.worker_kwargs)
 
-        self.trace_receiver = TraceReceiver(self.trace_graph, total_samples, channel_names)
+        self.trace_receiver = TraceReceiver(trace_view=self.trace_graph, total_samples=total_samples, channel_names=self.channel_names)
         return
 
     def initialise_workers(self):
@@ -198,6 +210,7 @@ class PicoScopeTab(DeviceTab):
              "is_4000a": is_4000a,
              "simple_trigger": self.worker_kwargs.get("simple_trigger", {}),
              "channels_configs": self.worker_kwargs.get("channels_configs", []),
+             "channel_names": self.channel_names,
              "trigger_conditions": self.worker_kwargs.get("trigger_conditions", []),
              "trigger_directions": self.worker_kwargs.get("trigger_directions", []),
              "trigger_properties": self.worker_kwargs.get("trigger_properties", []),
@@ -245,4 +258,7 @@ class PicoScopeTab(DeviceTab):
     @define_state(MODE_MANUAL, queue_state_indefinitely=True, delete_stale_states=True)
     def start_sampling(self, button):
         yield (self.queue_work(self.primary_worker, 'start_sampling'))
+
+    def open_attributes(self, button):
+        self.tabs_window.show()
 
