@@ -809,7 +809,7 @@ class PicoScopeWorker(Worker):
 
         self.pico.stop_sampling_event.wait()
 
-        channels = sorted(self.pico.complete_buffers.keys())
+        channels = sorted(self.pico.complete_buffers.keys()) # keys [0..8]
 
         # Prepare data
         data_list = []
@@ -824,18 +824,14 @@ class PicoScopeWorker(Worker):
         # Write data
         with h5py.File(self.h5_file, "r+") as f:
             group = f.require_group('/data/traces')
-            # dataset per channel
-            dataset_names = self.channel_names
-            dtypes = np.dtype({'names': ['t', 'values'], 'formats': [np.float64, np.float32]})
-            total_samples = self.pico.total_samples
-            times = np.linspace(0, (total_samples - 1) * self.pico.actual_sample_interval, total_samples)
-
-            for idx, ds_name in enumerate(dataset_names):
-                data = np.empty(total_samples,dtype=dtypes)
-                data['t'] = times
-                data['values'] = data_list[idx]
-                ds = group.create_dataset(self.device_name + '_' + ds_name, data=data, dtype=dtypes)
-                ds.attrs["trigger_at"] = int(self.pico.triggered_at)
+            # dataset per device
+            dataset_name = self.device_name
+            ds = group.create_dataset(dataset_name, data=data_array, dtype=np.float32, compression='gzip')
+            ds.attrs["num_channels"] = len(channels)
+            ds.attrs["channel_names"] = np.array(self.channel_names, dtype=h5py.string_dtype())
+            ds.attrs["sample_interval"] = float(self.pico.actual_sample_interval)
+            ds.attrs["triggered_at"] = int(self.pico.triggered_at)
+            ds.attrs["units"] = "mV"
 
         print(f"[INFO] Saved {data_array.shape[0]} samples × {data_array.shape[1]} channels")
 
@@ -880,9 +876,6 @@ class PicoScopeWorker(Worker):
 
     def siggen_software_trigger(self):
         self.pico.siggen_software_control(0)
-
-    def start_sampling(self):
-        print("[Warning] Sampling in manual mode is Not supported yet.")
 
 
 #######################################################################

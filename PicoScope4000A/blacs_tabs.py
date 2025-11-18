@@ -46,7 +46,8 @@ class TraceReceiver(ZMQServer):
         self.trace_view.clear()
 
         for i in range(len(self.channel_names)):
-            self.plot_line(self.channel_names[i], times, traces[:,i], colors[i])
+            # self.plot_line(self.channel_names[i], times, traces[:,i], colors[i])
+            self.plot_line(self.channel_names[i], times, traces[:, i], i)
 
         self.trace_view.addLine(x=triggered_at * sample_interval, y=traces[triggered_at:1], pen=pg.mkPen(color='r', width=1.5, style=QtCore.Qt.DashLine)) # endless vertical line where the trigger occurred.
         self.plot_dot_trigger(x=triggered_at * sample_interval, y=traces[triggered_at, 0]) # NOTE: Dot on first channel A
@@ -67,7 +68,10 @@ class TraceReceiver(ZMQServer):
         )
 
     def plot_line(self, name, time, trace, color):
-        pen = pg.mkPen(color=color, width=1)
+        if isinstance(color, int):
+            pen = pg.intColor(color)
+        else:
+            pen = pg.mkPen(color=color, width=1)
         self.trace_view.plot(
             time,
             trace,
@@ -179,13 +183,10 @@ class PicoScopeTab(DeviceTab):
         button_layout = QHBoxLayout()
 
         self.attributes_button = QPushButton("Attributes")
-        self.stream_button = QPushButton("Start Streaming") # start streaming in manual mode
         self.siggen_button = QPushButton("Trigger Signal Generator")
         self.attributes_button.clicked.connect(self.open_attributes)
-        self.stream_button.clicked.connect(self.start_sampling)
         self.siggen_button.clicked.connect(self.siggen_trigger)
 
-        button_layout.addWidget(self.stream_button)
         button_layout.addWidget(self.siggen_button)
         button_layout.addWidget(self.attributes_button)
         layout.addLayout(button_layout)
@@ -254,10 +255,6 @@ class PicoScopeTab(DeviceTab):
     @define_state(MODE_MANUAL, queue_state_indefinitely=True, delete_stale_states=True)
     def siggen_trigger(self, button):
         yield (self.queue_work(self.primary_worker, 'siggen_software_trigger'))
-
-    @define_state(MODE_MANUAL, queue_state_indefinitely=True, delete_stale_states=True)
-    def start_sampling(self, button):
-        yield (self.queue_work(self.primary_worker, 'start_sampling'))
 
     def open_attributes(self, button):
         self.tabs_window.show()

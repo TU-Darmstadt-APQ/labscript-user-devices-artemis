@@ -1,4 +1,4 @@
-# PicoScope 4000A Series
+# PicoScope 4000(A) Series
 ## Installation
 
 ### 1. Install drivers
@@ -34,27 +34,43 @@ PicoAnalogIn(name='conn2', parent_device=picoscope, connection='channel_B', enab
 Set an edge trigger and run streaming sampling mode. 
 
 Note: 
-- Only streaming mode is currently supported. 
-and set edge trigger and run streaming sampling mode. 
-- If no trigger is set, data collection starts immediately.
+- Only streaming mode is currently supported.
 - HDF5 shot file will contain up to the working buffer size (default 1000) of pre-trigger samples.
+- In an HDF5 file, the traces are stored under `data/traces`. Each group contains a single dataset with a column for each channel, and the groups are named by picoscope.
 
 ```python
-picoscope.set_stream_sampling(sampleInterval_ns=250, noPostTriggerSamples=10000)
-picoscope.run_mode('stream')
-    
-picoscope.set_simple_trigger(source="channel_A", threshold_mV=2900, direction='rising', delay_samples=0, autoTrigger_ms=0)
+picoscope_173.set_stream_sampling(sampling_rate=4e6, no_post_trigger_samples=10000)
+picoscope_173.set_simple_trigger(source="channel_A", threshold=2.9, direction='falling', delay_samples=0, auto_trigger_s=0)
+picoscope_173.signal_generator_config(offset_voltage=0, pk2pk=2, wave_type='square')
 ```
 
+Make sure that the stream, trigger, and signal generator settings in your experiment script match those defined in the connection table. 
 ### BLACS Integration
-All device settings are displayed in the BLACS device tab, divided into:
+All device settings are displayed in the BLACS device tab under `Attributes`, divided into:
 - channel settings
 - trigger settings
 - sampling settings
 - (optional) signal generator
 
-These settings are for display only and **should not be changed manually** in the tab.
+The plot will be displayed in the BLACS tab after the shot has run.
 
+### Lyse
+```python
+with run.open('r+') as shot:
+    picoscopes = shot.trace_names() # gets the group=picoscope names
+    for picoscope in picoscopes:
+        traces_ds = shot.h5_file['data']['traces'][picoscope] # get the dataset with traces
+        traces_names = traces_ds.attrs["channel_names"] # get the chanel names
+        # the t-values are not stored in the dataset, but they can be computed as follows:
+        dt = traces_ds.attrs["sample_interval"] 
+        triggered_at = traces_ds.attrs["triggered_at"]
+        data = traces_ds[()]
+        N, C = data.shape
+        t = np.linspace(0, (N-1) * dt, N)
+        traces = {name: data[:, i] for i, name in enumerate(traces_names)}
+
+        ### todo: visualization/analysis
+```
 ---
 Dictionary also include some modified toy examples from [PicoSDK](https://github.com/picotech/picosdk-python-wrappers/blob/master/ps4000aExamples/ps4444BlockExample.py)
 
