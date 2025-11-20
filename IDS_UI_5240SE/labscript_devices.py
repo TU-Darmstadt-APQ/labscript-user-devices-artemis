@@ -3,10 +3,7 @@ from labscript import set_passed_properties, LabscriptError, TriggerableDevice
 from labscript_devices.IMAQdxCamera.labscript_devices import IMAQdxCamera
 from labscript_utils import dedent
 import numpy as np
-import sys
 from enum import Enum
-from typing import Optional
-from pyqtgraph.examples.ScatterPlotSpeedTest import param
 from user_devices.logger_config import logger
 
 
@@ -45,7 +42,7 @@ class IDS_UICamera(TriggerableDevice):
         }
     )
     def __init__(self, name, trigger_activation_type:TriggerEdgeType=TriggerEdgeType.FALLING, serial_number=None, connection=None, parent_device=None, parentless=True,
-                 exposure_time=None, frame_rate_fps=None, gain=None, roi=None, visibility_level: Optional[VisibilityLevelType]=VisibilityLevelType.SIMPLE,
+                 exposure_time=None, frame_rate_fps=None, gain=None, roi=None, visibility_level: VisibilityLevelType=VisibilityLevelType.SIMPLE,
                  acquisition_timeout=None, orientation=None, exception_on_failed_shot=True, trigger_delay=0.0, **kwargs):
         """
 

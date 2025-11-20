@@ -5,7 +5,6 @@ from labscript_utils import dedent
 import labscript_utils.h5_lock
 import h5py
 import labscript_utils.properties
-from websocket import continuous_frame
 from zprocess import rich_print
 import zmq
 import time
@@ -22,7 +21,6 @@ from ids_peak import ids_peak_ipl_extension
 from datetime import datetime as dt
 
 import os
-from user_devices.logger_config import logger
 
 BLUE = '#66D9EF'
 RED = '#FF6347'
@@ -217,7 +215,7 @@ class IDS_Camera(object):
                 self.configure_acquisition()
                 self.start_acquisition()
 
-            print(f"\t ROI changed --> ({x, y, width, height}).")
+            print(f"\t ROI changed --> {x, y, width, height}.")
 
         except Exception as e:
             raise LabscriptError(f"Failed to set ROI: {e}.")
@@ -559,7 +557,7 @@ class IDSWorker(IMAQdxCameraWorker):
             )
 
         camera_attributes = properties['camera_attributes']
-        visibility_level = properties['visibility']
+        self.visibility_level = properties['visibility']
         trigger_activation = properties['trigger_activation']
         trigger_delay = properties['trigger_delay'] * 1e+6 # s -> us
         self.exception_on_failed_shot = properties['exception_on_failed_shot']
@@ -577,17 +575,6 @@ class IDSWorker(IMAQdxCameraWorker):
             self.smart_cache = {}
 
         self.set_attributes_smart(camera_attributes)
-
-        # Get the camera attributes, so that we can save them to the H5 file:
-        # fixme:
-        # for node in self.camera.node_map.Nodes():
-        #     print(node.Name(), node.Visibility(), node.IsReadable(), node.IsWriteable())
-        if visibility_level is not None:
-            self.attributes_to_save = self.get_attributes_as_dict(visibility_level, writeable_only=False)
-            print("attributes to save in transition to buffered: ", self.attributes_to_save)
-        else:
-            self.attributes_to_save = None
-
 
         print(f"Configuring camera for {self.n_images} images with hardware trigger mode.")
         self.camera.configure_hardware_trigger_mode(trigger_activation, trigger_delay)
@@ -628,7 +615,6 @@ class IDSWorker(IMAQdxCameraWorker):
 
         filename = f"{today_str}_{index}{ext}"
         full_path = os.path.join(path, filename)
-
         return full_path
 
     def _send_image_to_parent(self, image):
@@ -654,7 +640,7 @@ class IDSWorker(IMAQdxCameraWorker):
         self.camera.stop_acquisition()
 
         print(f"Saving {len(self.images)}/{self.n_images} images after shot.")
-
+        # images/orientation|device_name/label=image/frametype
         with h5py.File(self.h5_filepath, 'r+') as f:
             # Use orientation for image path, device_name if orientation unspecified
             if self.orientation is not None:
@@ -663,12 +649,6 @@ class IDSWorker(IMAQdxCameraWorker):
                 image_path = 'images/' + self.device_name
             image_group = f.require_group(image_path)
             image_group.attrs['camera'] = self.device_name
-
-
-            # Save camera attributes to the HDF5 file:
-            if self.attributes_to_save is not None:
-                print("Attributes to save", self.attributes_to_save)
-                set_attributes(image_group, self.attributes_to_save)
 
             # Whether we failed to get all the expected exposures:
             image_group.attrs['failed_shot'] = len(self.images) != len(self.exposures)
@@ -681,20 +661,9 @@ class IDSWorker(IMAQdxCameraWorker):
 
             # Write each image as a separate dataset
             for idx, image in enumerate(self.images):
-                image_name = exposure_names[idx]
-
-                if image_name in image_group:
-                    rich_print("[WARNING] Unable to store the frame, name already exists. ", color=YELLOW)
-                    timestamp = dt.now().strftime("%Y%m%d_%H%M%S_%f")
-                    image_name = f"{image_name}_{timestamp}"
-                    print(f"[WARNING] Saving as {image_name}")
-
-                print("IMAGE SHAPE", self.images[0].shape)
-                img_ds = image_group.create_dataset(name=image_name, data=image, compression='gzip')
-                img_ds.attrs['frametype'] = frametypes[idx]
+                group = image_group.require_group(exposure_names[idx])
+                dset = group.create_dataset(frametypes[idx], data=image, compression='gzip')
                 self._send_image_to_parent(image)
-
-            print(image_group)
 
         try:
             image_block = np.stack(self.images)
@@ -702,6 +671,13 @@ class IDSWorker(IMAQdxCameraWorker):
             print("Cannot display images in the GUI, they are not all the same shape")
         else:
             self._send_image_to_parent(image_block)
+
+        # Save camera attributes to the HDF5 file: fixme:
+        if self.visibility_level is not None:
+            self.attributes_to_save = self.get_attributes_as_dict(self.visibility_level, writeable_only=False)
+            print("attributes to save !!!!!!!!!!!!!!!!!: ", self.attributes_to_save)
+            set_attributes(image_group, self.attributes_to_save)
+
 
         self.images = None
         self.n_images = None

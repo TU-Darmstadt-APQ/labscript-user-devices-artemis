@@ -1,6 +1,5 @@
 from blacs.tab_base_classes import Worker, define_state
 from blacs.device_base_class import DeviceTab
-from user_devices.logger_config import logger
 from blacs.tab_base_classes import MODE_MANUAL
 import labscript_utils
 from labscript_devices.IMAQdxCamera.blacs_tabs import IMAQdxCameraTab
