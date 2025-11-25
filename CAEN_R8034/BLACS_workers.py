@@ -6,15 +6,19 @@ from zprocess import rich_print
 from user_devices.logger_config import logger
 import time
 from datetime import datetime
-from .caen_protocol import Caen
+from .caen_protocol import CAENDevice
 import numpy as np
 
 class CAENWorker(Worker):
     def init(self):
         """Initializes connection to CAEN device (direct Serial or USB or Ethernet)"""
         self.final_values = {}
-        self.caen = Caen(self.port, self.baud_rate, vid=self.vid, pid=self.pid, verbose=False, serial_number=self.serial_number)
-
+        # self.caen = Caen(self.port, self.baud_rate, vid=self.vid, pid=self.pid, verbose=False, serial_number=self.serial_number)
+        self.caen = CAENDevice(port=self.port, baud_rate=self.baud_rate, pid=self.pid, vid=self.vid, serial_number=self.serial_number)
+        for ch in range(8):
+            self.caen.enable_channel(ch, True)
+        print("Control mode : %s", self.caen.monitor_control_mode())
+        print("Board serial number: %s", self.caen.read_board_serial())
         # for running the buffered experiment in a separate thread:
         self.thread = None
         self._stop_event = threading.Event()

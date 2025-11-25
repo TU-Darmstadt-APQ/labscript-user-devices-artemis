@@ -1,392 +1,365 @@
-import usb.core
-import usb.util
 import socket
 import serial
 from labscript import LabscriptError
 from user_devices.logger_config import logger
-import time
 import serial.tools.list_ports
 import re
+from typing import Optional
+
+class TransportError(Exception):
+    pass
 
 
-class Caen:
-    """Protocol class to manage the communication with CAEN device.
-        Communication commands format:
+class ProtocolError(Exception):
+    pass
 
-    $CMD:<attribute>[,CH:<chval>],PAR:<par_name>[,VAL:<par_val>]<CR><LF>
-        attribute = {"MON", "SET", "INFO"}
-        chval = 0..N with N = number of channels, N for group
-    """
-    def __init__(self, port=None, baud_rate=9600, vid=None, pid=None, verbose=True, serial_number=None):
-        self.verbose = verbose
-        self.serial_number = serial_number
-        # Connection types
-        self.using_serial = False
-        self.using_ethernet = False
 
-        if vid is not None and pid is not None:
-            self.vid = vid
-            self.pid = pid
-            self.open_usb()
-            self.using_serial = True
+class CAENError(Exception):
+    pass
 
-        elif port is not None:
-            self.serial = None
-            self.port = port
-            self.baud_rate = baud_rate
-            self.open_serial()
-            self.using_serial = True
+class Transport:
+    def write(self, data: bytes) -> None:
+        raise NotImplementedError
 
-        else:
-            self.socket = None
-            self.ethernet_host = '192.168.0.250'
-            self.ethernet_port = 1470
-            self.using_ethernet = True
-            self.open_ethernet()
+    def read_line(self, timeout: float | None = None) -> bytes:
+        raise NotImplementedError
 
-        for ch in range(8):
-            self.enable_channel(ch, True)
-            # self.check_channel_status(ch)
+    def close(self) -> None:
+        pass
 
-        if not (self.using_serial or self.using_ethernet):
-            raise LabscriptError("No valid connection method (USB, Serial, Ethernet) provided.")
+    def __enter__(self):
+        return self
 
-    def open_ethernet(self):
+    def __exit__(self, exc_type, exc, tb):
         try:
-            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # TCP
-            print(f"Connect to {self.ethernet_host}:{self.ethernet_port}")
-            self.socket.connect((self.ethernet_host, self.ethernet_port))
-            self.socket.settimeout(3)
-            logger.info(f"[CAEN] Ethernet connection established.")
-        except Exception as e:
-            self.close_ethernet() # Close socket if failed
-            self.socket = None
-            raise LabscriptError(f"[CAEN] Ethernet connection failed: {e}")
+            self.close()
+        except Exception:
+            pass
 
-    def close_ethernet(self):
-        self.socket.close()
+class SerialTransport(Transport):
+    """Serial transport wrapper around pyserial.Serial.    """
+    def __init__(self, baud: int,
+                 port: Optional[str] = None,
+                 pid: Optional[str] = None,
+                 vid: Optional[str] = None,
+                 serial_number: Optional[str] = None,
+                 timeout: float = 1.0):
 
-    def open_usb(self):
+        self.ser: Optional[serial.Serial] = None
+        self.timeout = timeout
+        self.baud = baud
+
+        if port and (pid or vid):
+            raise ValueError("Specify either port OR (pid,vid), not both")
+
         try:
-            port_found = False
-            ports = list(serial.tools.list_ports.comports())
-            for p in ports:
-                if self.pid.upper() in p.hwid and self.vid.upper() in p.hwid:
-                    tmp_serial = serial.Serial(p.device, self.baud_rate, timeout=1) # Open temporary to check serial_number
-                    response = self.query_serial(tmp_serial)
-                    print(f"[DEBUG] Serial numbers: (queried, given) {repr(response)}, {repr(self.serial_number)}")
-                    if response == self.serial_number:
-                        self.serial = tmp_serial
-                        port_found = True
-                        break
-                    else:
-                        tmp_serial.close() # Close temporal serial connection
-                        continue
-
-            if not port_found:
-                raise LabscriptError(f"USB connection failed: COM port with pid:vid={self.pid}:{self.vid} not found.")
-
-        except Exception as e:
-            self.close_usb()
-            raise LabscriptError(f"USB connection failed: {e}")
-
-    def close_usb(self):
-        self.close_serial()
-
-    def query_serial(self, serial_obj):
-        cmd_ser = "$CMD:INFO,PAR:BDSNUM"
-        data = (cmd_ser + '\r\n').encode()
-        try:
-            serial_obj.write(data)
-            response = serial_obj.readline().decode().strip()
-            serial_no = self._parse_response(response, expect_val=True)
-            return serial_no
-        except Exception as e:
-            serial_obj.close()
-            raise LabscriptError(f"Failed to query serial: {e}")
-
-    def check_serial_number(self, serial_no):
-        cmd_ser = "$CMD:INFO,PAR:BDSNUM"
-        response =  self.query(cmd_ser, expect_val=True)
-        print(repr(serial_no), repr(response))
-        return serial_no == response
-
-    def open_serial(self):
-        try:
-            self.serial = serial.Serial(self.port, self.baud_rate, timeout=1)
-            logger.info(f"[CAEN] CAEN Serial connection opened on {self.port} at {self.baud_rate} bps")
-        except Exception as e:
-            raise LabscriptError(f"CAEN Serial connection failed: {e}")
-
-    def close_serial(self):
-        self.serial.close()
-
-    def close_connection(self):
-        if self.serial and self.serial.is_open:
-            self.serial.close()
-        if self.socket:
-            self.socket.close()
-
-    ### board commands
-    def set_control_mode(self, mode: str):
-        mode = mode.upper()
-        cmd = f"$CMD:INFO,PAR:BDCTR,VAL:{mode}"
-        self.query(cmd)
-
-        # self.send_to_CAEN(cmd)
-        # response = self.receive_from_CAEN()
-        # self._check_response(response)
-        #
-        # if self.verbose:
-        #     print(f"Set control mode to {mode}: \t {response}")
-        # logger.info(f"[CAEN] Sent: {cmd} \t Received: {response}")
-
-    def set_interlock_mode(self, mode: str):
-        """ DRIVEN/UNDRIVEN"""
-        mode = mode.upper()
-        cmd = f"$CMD:SET,PAR:BDILKM,VAL:{mode}"
-        self.query(cmd)
-
-        # self.send_to_CAEN(cmd)
-        # response = self.receive_from_CAEN()
-        # self._check_response(response)
-        #
-        # if self.verbose:
-        #     print(f"Set INTERLOCK mode to {mode}: \t {response}")
-        # logger.info(f"[CAEN] Sent: {cmd} \t Received: {response}")
-
-    def clear_alarm_signal(self):
-     cmd = f"$CMD:SET,PAR:BDCLR"
-     self.query(cmd)
-
-     # self.send_to_CAEN(cmd)
-     # response = self.receive_from_CAEN()
-     # self._check_response(response)
-     #
-     # if self.verbose:
-     #     print(f"Clear alarm signal: \t {response}")
-     # logger.info(f"[CAEN] Sent: {cmd} \t Received: {response}")
-
-    ### per channel commands
-    def check_channel_status(self, channel:int):
-        """Checks the status of the channel."""
-        # todo:
-        cmd = f"$CMD:INFO,CH:{channel},PAR:STATUS"
-        response = self.query(cmd)
-        print("STATUS\t", response)
-
-    def enable_channel(self, channel:int, enable:bool):
-        if enable:
-            en='on'
-        else:
-            en='off'
-        cmd = f"$CMD:SET,CH:{channel},PAR:pw,val:{en}"
-        self.query(cmd)
-
-    def set_voltage(self, channel:int, voltage:float):
-        cmd = f"$CMD:SET,CH:{channel},PAR:VSET,VAL:{voltage}"
-        self.query(cmd)
-
-        # self.send_to_CAEN(cmd)
-        # response = self.receive_from_CAEN()
-        # self._check_response(response)
-        #
-        # if self.verbose:
-        #     print(f"Set voltage on CH {channel} to {voltage}: \t {response}")
-        # logger.info(f"[CAEN] Sent: {cmd} \t Received: {response}")
-
-    def monitor_voltage(self, channel: int) -> float:
-        cmd = f"$CMD:MON,CH:{channel},PAR:VMON"
-        return self.query(cmd, expect_val=True)
-
-        # self.send_to_CAEN(cmd)
-        # response = self.receive_from_CAEN()
-        # self._check_response(response)
-        #
-        # if self.verbose:
-        #     print(f"Monitor voltage on CH {channel}: \t {response}")
-        # logger.info(f"[CAEN] Sent: {cmd} \t Received: {response}")
-        #
-        # # "#CMD:OK,VAL:<voltage>"
-        # parts = response.strip().split(',')
-        # if len(parts) < 2 or not parts[1].startswith("VAL:"):
-        #     raise LabscriptError(f"[CAEN] Unexpected response format: {response}")
-        # voltage = float(parts[1][4:])
-        # return voltage
-
-    def set_current(self, channel:int, current:float):
-        cmd = f"$CMD:SET,CH:{channel},PAR:ISET,VAL:{current}"
-        self.query(cmd)
-
-        # self.send_to_CAEN(cmd)
-        # response = self.receive_from_CAEN()
-        # self._check_response(response)
-        #
-        # if self.verbose:
-        #     print(f"Set current on CH {channel} to {current}: \t {response}")
-        # logger.info(f"[CAEN] Sent: {cmd} \t Received: {response}")
-
-    def monitor_current(self, channel: int) -> float:
-        cmd = f"$CMD:MON,CH:{channel},PAR:IMON"
-        return self.query(cmd, expect_val=True)
-        # self.send_to_CAEN(cmd)
-        # response = self.receive_from_CAEN()
-        # self._check_response(response)
-        #
-        # if self.verbose:
-        #     print(f"Monitor current on CH {channel}: \t {response}")
-        # logger.info(f"[CAEN] Sent: {cmd} \t Received: {response}")
-        #
-        # # "#CMD:OK,VAL:<current>"
-        # parts = response.strip().split(',')
-        # if len(parts) < 2 or not parts[1].startswith("VAL:"):
-        #     raise LabscriptError(f"[CAEN] Unexpected response format: {response}")
-        # current = float(parts[1][4:])
-        # return current
-
-    def set_ramp_up_rate(self, channel: int, rate: float):
-        """Maximum High Voltage increase rate. [V/s]"""
-        cmd = f"$CMD:SET,CH:{channel},PAR:RUP,VAL:{rate}"
-        self.query(cmd)
-
-        # self.send_to_CAEN(cmd)
-        # response = self.receive_from_CAEN()
-        # self._check_response(response)
-        #
-        # if self.verbose:
-        #     print(f"Set ramp-up on CH {channel} to {rate}: \t {response}")
-        # logger.info(f"[CAEN] Sent: {cmd} \t Received: {response}")
-
-    def set_ramp_down_rate(self, channel: int, rate: float):
-        """Maximum High Voltage descrease rate. [V/s]"""
-        cmd = f"$CMD:SET,CH:{channel},PAR:RDWN,VAL:{rate}"
-        self.query(cmd)
-
-        # self.send_to_CAEN(cmd)
-        # response = self.receive_from_CAEN()
-        # self._check_response(response)
-        #
-        # if self.verbose:
-        #     print(f"Set ramp-down on CH {channel} to {rate}: \t {response}")
-        # logger.info(f"[CAEN] Sent: {cmd} \t Received: {response}")
-
-    def trip(self, channel: int, time: float):
-        """Max. time an "overcurrent" can last (seconds). Overcurrent" lasting
-        more than set value (1 to 9999) causes the channel to "trip".
-        Output voltage will drop to zero either at the Ramp-down rate or at the fastest available rate,
-        depending on Power Down setting;
-        in both cases the channel is put in the off state.
-        If trip= INFINITE, "overcurrent" lasts indefinitely.
-        TRIP range: 0 ÷ 999.9s; 1000 s = Infinite. Step = 0.1 s. """
-        cmd = f"$CMD:SET,CH:{channel},PAR:TRIP,VAL:{time}"
-        self.query(cmd)
-        # self.send_to_CAEN(cmd)
-        # response = self.receive_from_CAEN()
-        # self._check_response(response)
-        #
-        # if self.verbose:
-        #     print(f"Set trip on CH {channel} to {time}: \t {response}")
-        # logger.info(f"[CAEN] Sent: {cmd} \t Received: {response}")
-
-    def set_power_down_mode(self, channel: int, mode: str):
-        """RAMP/KILL"""
-        mode = mode.upper()
-        cmd = f"$CMD:SET,CH:{channel},PAR:PDWN,VAL:{mode}"
-        self.query(cmd)
-        # self.send_to_CAEN(cmd)
-        # response = self.receive_from_CAEN()
-        # self._check_response(response)
-        #
-        # if self.verbose:
-        #     print(f"Set power down mode on CH {channel} to {mode}: \t {response}")
-        # logger.info(f"[CAEN] Sent: {cmd} \t Received: {response}")
-
-    ### Helpers
-    def send_to_CAEN(self, cmd_str):
-        data = (cmd_str + '\r\n').encode()
-        try:
-            if self.using_serial:
-                self.serial.write(data)
-            elif self.using_ethernet:
-                self.socket.sendall(data)
+            if port:
+                self.ser = serial.Serial(port, baud, timeout=timeout)
+            elif pid and vid:
+                found = self._find_and_open_by_vid_pid(vid, pid, serial_number, baud, timeout)
+                if not found:
+                    raise TransportError(f"No serial device found with VID={vid} PID={pid} SN={serial_number}")
             else:
-                raise LabscriptError("[CAEN] No connection with module is established.")
-        except Exception as e:
-            logger.error(f"[CAEN] Write failed: {e}")
-            raise LabscriptError(f"[CAEN] Failed to send command: {e}")
+                raise ValueError("Either port or (pid and vid) must be provided")
+        except Exception:
+            if self.ser is not None and self.ser.is_open:
+                try:
+                    self.ser.close()
+                except Exception:
+                    pass
+            raise
 
-    def receive_from_CAEN(self):
-        try:
-            if self.using_serial:
-                return self.serial.readline().decode().strip()
-            if self.using_ethernet:
-                return self.socket.recv_until_delim('\r\n').decode(errors='ignore').strip()
-            return None
-        except Exception as e:
-            logger.error(f"[CAEN] Read from CAEN failed: {e}")
-            return 'SERIAL_ERROR' if self.using_serial else 'ETH_ERROR'
-
-    def _check_response(self, response: str):
-        """Raises descriptive errors based on CAEN serial error codes.
-            #<header>:<result>[,VAL:<par_val>]<CR><LF>
-                header = {"CMD", "LOC", "VAL", "CH", "PAR"}
-                result = {"OK", "ERR"}
-        """
-        error_map = {
-            "#CMD:ERR": "Wrong attribute, should be 'SET'",
-            "#LOC:ERR": "SET command in local mode",
-            "#VAL:ERR": "Wrong 'VAL' field value in SET command",
-            "#CH:ERR": "Wrong 'CH' field value",
-            "#PAR:ERR": "Wrong 'PAR' field value"
-        }
-        for prefix, message in error_map.items():
-            if response.startswith(prefix):
-                raise LabscriptError(message)
-
-    def query(self, cmd: str, expect_val:bool=False) -> str | float:
-        self.send_to_CAEN(cmd)
-        response = self.receive_from_CAEN()
-        resp = self._parse_response(response, expect_val)
-
-        if self.verbose:
-            print(f"Sent: {cmd}\tResponse: {response}")
-        logger.info(f"[CAEN] Sent: {cmd}\tReceived: {response}")
-
-        return resp
-        # if expect_val:
-        #     parts = response.strip().split(',')
-        #     if len(parts) < 2 or not parts[1].startswith("VAL:"):
-        #         raise LabscriptError(f"[CAEN] Unexpected response format: {response}")
-        #     return parts[1][4:]
-        # return response
-
-    def _parse_response(self, response: str, expect_val: bool = False) -> str | float | None:
-        response = response.strip()
-
-        # Map of CAEN error prefixes
-        error_map = {
-            "#CMD:ERR": "Wrong attribute, should be 'SET'",
-            "#LOC:ERR": "SET command in local mode",
-            "#VAL:ERR": "Wrong 'VAL' field value in SET command",
-            "#CH:ERR": "Wrong 'CH' field value",
-            "#PAR:ERR": "Wrong 'PAR' field value"
-        }
-        for prefix, msg in error_map.items():
-            if response.startswith(prefix):
-                raise LabscriptError(msg)
-
-        # If VAL is expected, try to extract it
-        if expect_val:
-            match = VAL_RE.search(response)
-            if not match:
-                raise LabscriptError(f"Expected VAL field, got: {response}")
-            val_str = match.group(1)
+    def _find_and_open_by_vid_pid(self, vid: str, pid: str, serial_number: Optional[str], baudrate: int,
+                                  timeout: float) -> bool:
+        vid = vid.upper()
+        pid = pid.upper()
+        ports = list(serial.tools.list_ports.comports())
+        for p in ports:
             try:
-                return float(val_str)
-            except ValueError:
-                return val_str  # Return as string if cannot convert
+                hwid = (p.hwid or "").upper()
+                if vid in hwid and pid in hwid:
+                    logger.debug("Candidate port %s (hwid=%s)", p.device, p.hwid)
+                    tmp = serial.Serial(p.device, baudrate, timeout=timeout)
+                    if serial_number:
+                        try:
+                            tmp.write(("$CMD:MON,PAR:BDSNUM\r\n").encode())
+                            response = tmp.readline().decode(errors="ignore").strip()
+                            m = re.match(r"#CMD:OK,VAL:(.+)$", response)
+                            if m:
+                                found_sn = m.group(1)
+                                if found_sn == serial_number:
+                                    self.ser = tmp
+                                    logger.info("Opened serial %s for serial_number=%s", p.device, serial_number)
+                                    return True
+                                else:
+                                    tmp.close()
+                                    continue
+                            else:
+                                # no valid probe
+                                tmp.close()
+                                continue
+                        except Exception:
+                            try:
+                                tmp.close()
+                            except Exception:
+                                pass
+                            continue
+                    else:
+                        # no serial_number check requested -> accept first match
+                        self.ser = tmp
+                        logger.info("Opened serial %s by VID/PID match", p.device)
+                        return True
+            except Exception as e:
+                logger.debug("Error probing port %s: %s", getattr(p, "device", "<?>"), e)
+                continue
+        return False
 
-        # No VAL expected;
+    def write(self, data: bytes) -> None:
+        if not self.ser or not self.ser.is_open:
+            raise TransportError("Serial port not open")
+        try:
+            self.ser.write(data)
+        except Exception as e:
+            raise TransportError(f"Serial write failed: {e}") from e
+
+    def read_line(self, timeout: float | None = None) -> bytes:
+        if not self.ser or not self.ser.is_open:
+            raise TransportError("Serial port not open")
+        try:
+            b = self.ser.readline()
+            if b is None:
+                raise TransportError("Serial read returned None")
+            return b
+        except Exception as e:
+            raise TransportError(f"Serial read failed: {e}") from e
+
+    def close(self) -> None:
+        if self.ser:
+            try:
+                if self.ser.is_open:
+                    self.ser.flush()
+                    self.ser.close()
+            except Exception:
+                pass
+
+class EthTransport(Transport):
+    def __init__(self, host: str, port: int, timeout: float = 3.0):
+        self.sock = socket.create_connection((host, port), timeout=timeout)
+        self.sock.settimeout(timeout)
+
+
+    def write(self, data: bytes) -> None:
+        try:
+            self.sock.sendall(data)
+        except Exception as e:
+            raise TransportError(f"Socket write failed: {e}") from e
+
+
+    def read_line(self, timeout: float | None = None) -> bytes:
+        # read until CRLF
+        prev_timeout = self.sock.gettimeout()
+        if timeout is not None:
+            self.sock.settimeout(timeout)
+        try:
+            buf = bytearray()
+            while True:
+                chunk = self.sock.recv(1)
+                if not chunk:
+                    # connection closed
+                    raise TransportError("Socket closed")
+                buf += chunk
+                if buf.endswith(b"\r\n"):
+                    return bytes(buf)
+        except socket.timeout as e:
+            raise TransportError("Socket read timeout") from e
+        except Exception as e:
+            raise TransportError(f"Socket read failed: {e}") from e
+        finally:
+            if timeout is not None:
+                self.sock.settimeout(prev_timeout)
+
+
+    def close(self) -> None:
+        try:
+            self.sock.shutdown(socket.SHUT_RDWR)
+        except Exception:
+            pass
+        try:
+            self.sock.close()
+        except Exception:
+            pass
+
+
+class CAENProtocol:
+    """Formats commands, sends via Transport, parses responses."""
+    RE_OK_VAL = re.compile(r"^#CMD:OK,VAL:(.+)$")
+    RE_OK = re.compile(r"^#CMD:OK$")
+    RE_ERR = re.compile(r"^#CMD:ERR(?:,(.*))?$")
+    RE_LOC_ERR = re.compile(r"^#LOC:ERR(?:,(.*))?$")
+    RE_VAL_ERR = re.compile(r"^#VAL:ERR(?:,(.*))?$")
+    RE_CH_ERR = re.compile(r"^#CH:ERR(?:,(.*))?$")
+    RE_PAR_ERR = re.compile(r"^#PAR:ERR(?:,(.*))?$")
+
+    RE_GENERIC = re.compile(r"^#(.*)$")
+
+    def __init__(self, transport: Transport, write_timeout: float = 1.0, read_timeout: float = 2.0):
+        self.transport = transport
+        self.write_timeout = write_timeout
+        self.read_timeout = read_timeout
+
+    def _format_cmd(self, attribute: str, par: Optional[str] = None, val: Optional[str] = None, ch: Optional[int] = None) -> str:
+        """ attribute is one of INFO/SET/MON."""
+        parts = [f"$CMD:{attribute}"]
+        if ch is not None:
+            parts.append(f"CH:{int(ch)}")
+        if par is not None:
+            parts.append(f"PAR:{par}")
+        if val is not None:
+            parts.append(f"VAL:{val}")
+        return ",".join(parts)
+
+    def send_raw(self, cmdstr: str) -> None:
+        data = (cmdstr + "\r\n").encode()
+        self.transport.write(data)
+
+    def read_raw(self) -> str:
+        raw = self.transport.read_line(timeout=self.read_timeout)
+        try:
+            return raw.decode(errors="ignore").strip()
+        except Exception as e:
+            raise ProtocolError(f"Failed to decode raw response: {e}") from e
+
+    def query(self, cmdstr: str, expect_val: bool = False) -> Optional[str]:
+        try:
+            self.send_raw(cmdstr)
+            resp = self.read_raw()
+            print(f"\t {cmdstr} \t {resp}")
+            return self._parse_response(resp, expect_val)
+        except (TransportError, ProtocolError) as e:
+           raise e
+
+    def _parse_response(self, response: str, expect_val: bool) -> Optional[str]:
+        if response is None:
+            raise ProtocolError("Empty response")
+        m_val = self.RE_OK_VAL.match(response)
+        if m_val:
+            val = m_val.group(1)
+            if expect_val:
+                return val
+            return None
+        if self.RE_OK.match(response):
+            if expect_val:
+                return None  # OK with no value
+            return None
+
+        # Error handling
+        m_err = self.RE_ERR.match(response)
+        if m_err:
+            extra = m_err.group(1)
+            raise CAENError(f"CAEN reported error (Wrong attribute, should be 'SET'): {extra}")
+        m_loc_err = self.RE_LOC_ERR.match(response)
+        if m_loc_err:
+            raise CAENError("SET command in local mode")
+        m_val_err = self.RE_VAL_ERR.match(response)
+        if m_val_err:
+            raise CAENError("Wrong 'VAL' field value in SET command")
+        m_par_err = self.RE_PAR_ERR.match(response)
+        if m_par_err:
+            raise CAENError("Wrong 'PAR' field value")
+        m_ch_err = self.RE_CH_ERR.match(response)
+        if m_ch_err:
+            raise CAENError("Wrong 'CH' field value")
+
+        if expect_val:
+            return response # error??
         return None
 
-VAL_RE = re.compile(r'VAL:(.+)')
+    # High-level helpers
+    def make_set(self, par: str, val: str, ch: Optional[int] = None) -> str:
+        return self._format_cmd("SET", par=par, val=val, ch=ch)
+
+    def make_mon(self, par: str, ch: Optional[int] = None) -> str:
+        return self._format_cmd("MON", par=par, ch=ch)
+
+    def make_info(self, par: str, ch: Optional[int] = None) -> str:
+        return self._format_cmd("INFO", par=par, ch=ch)
+
+
+class CAENDevice:
+    """High-level device API. Channels indexed 0..N-1."""
+    def __init__(self, port=None, baud_rate=9600, vid=None, pid=None, serial_number=None):
+        if port or (pid and vid):
+            transport = SerialTransport(port=port, baud=baud_rate, pid=pid, vid=vid, serial_number=serial_number)
+        else:
+            transport = EthTransport(host='192.168.0.250', port=1470)
+
+        self.protocol = CAENProtocol(transport=transport)
+
+    # Board-level
+    def read_board_serial(self) -> str:
+        return self.protocol.query(self.protocol.make_mon("BDSNUM"), expect_val=True)
+
+    def set_control_mode(self, mode: str):
+        self.protocol.query(self.protocol.make_set("BDCTR", val=mode), expect_val=False)
+
+    def monitor_control_mode(self) -> str:
+        return self.protocol.query(self.protocol.make_mon("BDCTR"), expect_val=True)
+
+    def set_interlock_mode(self, mode: str):
+        mode = str(mode).upper()
+        cmd = self.protocol.make_set("BDILKM", val=mode)
+        return self.protocol.query(cmd, expect_val=False)
+
+    def clear_alarm_signal(self):
+        cmd = self.protocol.make_set("BDCLR")
+        return self.protocol.query(cmd, expect_val=False)
+
+    # Channel-level
+    def enable_channel(self, channel: int, enable: bool = True):
+        val = "ON" if enable else "OFF"
+        cmd = self.protocol.make_set("PW", val=val, ch=channel)
+        self.protocol.query(cmd, expect_val=False)
+
+    def set_voltage(self, channel: int, voltage: float):
+        cmd = self.protocol.make_set("VSET", val=str(float(voltage)), ch=channel)
+        self.protocol.query(cmd, expect_val=False)
+
+    def monitor_voltage(self, channel: int) -> float:
+        val = self.protocol.query(self.protocol.make_mon("VMON", ch=channel), expect_val=True)
+        try:
+            return float(val)
+        except Exception as e:
+            raise ProtocolError(f"Failed to parse VMON response '{val}': {e}")
+
+    def set_current(self, channel: int, current: float):
+        cmd = self.protocol.make_set("ISET", val=str(float(current)), ch=channel)
+        self.protocol.query(cmd, expect_val=False)
+
+    def monitor_current(self, channel: int) -> float:
+        val = self.protocol.query(self.protocol.make_mon("IMON", ch=channel), expect_val=True)
+        try:
+            return float(val)
+        except Exception as e:
+            raise ProtocolError(f"Failed to parse IMON response '{val}': {e}")
+
+    def set_ramp_up_rate(self, channel: int, rate: float):
+        cmd = self.protocol.make_set("RUP", val=str(float(rate)), ch=channel)
+        return self.protocol.query(cmd, expect_val=False)
+
+    def set_ramp_down_rate(self, channel: int, rate: float):
+        cmd = self.protocol.make_set("RDWN", val=str(float(rate)), ch=channel)
+        return self.protocol.query(cmd, expect_val=False)
+
+    def trip(self, channel: int, time_s: float):
+        cmd = self.protocol.make_set("TRIP", val=str(float(time_s)), ch=channel)
+        return self.protocol.query(cmd, expect_val=False)
+
+    def set_power_down_mode(self, channel: int, mode: str):
+        cmd = self.protocol.make_set("PDWN", val=str(mode).upper(), ch=channel)
+        return self.protocol.query(cmd, expect_val=False)
+
+
+
+
+
+
