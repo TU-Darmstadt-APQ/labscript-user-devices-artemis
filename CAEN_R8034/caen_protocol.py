@@ -233,7 +233,7 @@ class CAENProtocol:
         try:
             self.send_raw(cmdstr)
             resp = self.read_raw()
-            print(f"\t {cmdstr} \t {resp}")
+            # print(f"\t {cmdstr} \t {resp}")
             return self._parse_response(resp, expect_val)
         except (TransportError, ProtocolError) as e:
            raise e
@@ -358,6 +358,9 @@ class CAENDevice:
         cmd = self.protocol.make_set("PDWN", val=str(mode).upper(), ch=channel)
         return self.protocol.query(cmd, expect_val=False)
 
+    def get_status(self, channel:int) -> str:
+        cmd = self.protocol.make_mon("STATUS", ch=channel)
+        return self.protocol.query(cmd, expect_val=True)
 
 
 

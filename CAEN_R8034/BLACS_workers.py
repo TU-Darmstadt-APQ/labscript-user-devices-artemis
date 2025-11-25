@@ -13,12 +13,13 @@ class CAENWorker(Worker):
     def init(self):
         """Initializes connection to CAEN device (direct Serial or USB or Ethernet)"""
         self.final_values = {}
-        # self.caen = Caen(self.port, self.baud_rate, vid=self.vid, pid=self.pid, verbose=False, serial_number=self.serial_number)
         self.caen = CAENDevice(port=self.port, baud_rate=self.baud_rate, pid=self.pid, vid=self.vid, serial_number=self.serial_number)
         for ch in range(8):
             self.caen.enable_channel(ch, True)
-        print("Control mode : %s", self.caen.monitor_control_mode())
-        print("Board serial number: %s", self.caen.read_board_serial())
+            print(self.caen.get_status(channel=ch))
+
+        print("Control mode : ", self.caen.monitor_control_mode())
+        print("Board serial number : ", self.caen.read_board_serial())
         # for running the buffered experiment in a separate thread:
         self.thread = None
         self._stop_event = threading.Event()
@@ -28,34 +29,13 @@ class CAENWorker(Worker):
         """Closes connection."""
         self._stop_event.set()
         self.thread.join()
-        self.caen.close_connection()
 
     def program_manual(self, front_panel_values): 
         """Allows for user control of the device via the BLACS_tab, 
         setting outputs to the values set in the BLACS_tab widgets. 
         Runs at the end of the shot."""
         rich_print(f"---------- Manual MODE start: ----------", color=BLUE)
-        print(f"front panel values: {front_panel_values}")
-
         self.front_panel_values = front_panel_values
-
-        if not getattr(self, 'restored_from_final_values', False):
-            print("Front panel values (before shot):")
-            for ch_name, voltage in front_panel_values.items():
-                print(f"  {ch_name}: {voltage:.2f} V")
-
-            # Restore final values from previous shot, if available
-            if self.final_values:
-                for ch_num, value in self.final_values.items():
-                    front_panel_values[f'CH {int(ch_num)}'] = value
-
-            print("\nFront panel values (after shot):")
-            for ch_num, voltage in self.final_values.items():
-                print(f"  {ch_num}: {voltage:.2f} V")
-
-            self.final_values = {}  # Empty after restoring
-            self.restored_from_final_values = True
-
         return front_panel_values
 
     def check_remote_values(self):
@@ -95,7 +75,9 @@ class CAENWorker(Worker):
         self.thread = threading.Thread(target=self._run_experiment_sequence, args=(events,))
         self.thread.start()
 
-        return {}
+        # Prepare events
+        final_values = events[-1][1]
+        return final_values
         
     def _run_experiment_sequence(self, events):
         try:
@@ -109,7 +91,6 @@ class CAENWorker(Worker):
                 for conn_name, voltage in voltages.items():
                     channel_num = self._get_channel_num(conn_name)
                     self.caen.set_voltage(channel_num, voltage)
-                    self.final_values[channel_num] = voltage
                     print(f"[{t:.3f}s] --> Set {conn_name} (#{channel_num}) = {voltage}")
                     if self._stop_event.is_set():
                         return
