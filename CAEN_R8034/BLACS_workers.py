@@ -1,3 +1,5 @@
+import queue
+
 from blacs.tab_base_classes import Worker
 from labscript import LabscriptError
 import h5py
@@ -12,23 +14,25 @@ import numpy as np
 class CAENWorker(Worker):
     def init(self):
         """Initializes connection to CAEN device (direct Serial or USB or Ethernet)"""
-        self.final_values = {}
         self.caen = CAENDevice(port=self.port, baud_rate=self.baud_rate, pid=self.pid, vid=self.vid, serial_number=self.serial_number)
         for ch in range(8):
             self.caen.enable_channel(ch, True)
-            print(self.caen.get_status(channel=ch))
+            # print(self.caen.get_status(channel=ch))
 
         print("Control mode : ", self.caen.monitor_control_mode())
         print("Board serial number : ", self.caen.read_board_serial())
-        # for running the buffered experiment in a separate thread:
-        self.thread = None
-        self._stop_event = threading.Event()
-        self._finished_event = threading.Event()
-        
+
+        # setting values in separate thread
+        self.job_queue = queue.Queue()
+        self.worker_thread = threading.Thread(target=self._setting_loop, daemon=True)
+        self.worker_thread.start()
+
     def shutdown(self):
         """Closes connection."""
-        self._stop_event.set()
-        self.thread.join()
+        self.job_queue.put(None) # put sentinel unblock queue.get()
+        self.worker_thread.join()
+        self.caen.close()
+
 
     def program_manual(self, front_panel_values): 
         """Allows for user control of the device via the BLACS_tab, 
@@ -54,10 +58,10 @@ class CAENWorker(Worker):
         Runs at the start of each shot."""
         rich_print(f"---------- Begin transition to Buffered: ----------", color=BLUE)
         self.restored_from_final_values = False  # Drop flag
-        self.final_values = {}  # Store the final values to update GUI during transition_to_manual
         self.h5file = h5_file  # Store path to h5 to write back from front panel
         self.device_name = device_name
 
+        # Prepare events
         with h5py.File(h5_file, 'r') as hdf5_file:
             group = hdf5_file['devices'][device_name]
             AO_data = group['AO_buffered'][:]
@@ -69,34 +73,44 @@ class CAENWorker(Worker):
             voltages = {ch: row[ch] for ch in row.dtype.names if ch != 'time'}
             events.append((t, voltages))
 
-        # Create and launch thread
-        self._stop_event.clear()
-        self._finished_event.clear()
-        self.thread = threading.Thread(target=self._run_experiment_sequence, args=(events,))
-        self.thread.start()
+        # NOTE: The last event is added only to ensure a non-zero experiment duration.
+        # If it duplicates the previous event, it is safe to drop it.
+        if events[-1][1] == events[-2][1]:
+            events = events[:-1]
 
-        # Prepare events
+        for event in events:
+            self.job_queue.put(event)
+
+        self.job_queue.join() # blocks until all task are done
+
+        # return last values to update GUI
         final_values = events[-1][1]
         return final_values
-        
-    def _run_experiment_sequence(self, events):
-        try:
-            start_time = time.time()
-            for t, voltages in events:
-                now = time.time()
-                wait_time = t - (now - start_time)
-                if wait_time > 0:
-                    time.sleep(wait_time)
-                print(f"[Time: {datetime.now()}] \n")
-                for conn_name, voltage in voltages.items():
-                    channel_num = self._get_channel_num(conn_name)
-                    self.caen.set_voltage(channel_num, voltage)
-                    print(f"[{t:.3f}s] --> Set {conn_name} (#{channel_num}) = {voltage}")
-                    if self._stop_event.is_set():
-                        return
-        finally:
-            self._finished_event.set()
-            print(f"[Thread] finished all events !")
+
+    def _setting_loop(self):
+        while True:
+            item = self.job_queue.get()
+            if item is None:
+                self.job_queue.task_done()
+                break
+
+            t, voltages = item
+            try:
+                self._apply_event(t, voltages)
+                time.sleep(1) #fixme: wait until all voltages are set
+
+            except Exception as e:
+                logger.error("Error by setting voltages to CAEN", e)
+            finally:
+                self.job_queue.task_done()
+
+    def _apply_event(self, t, voltages):
+        """ Assumption: only one value per channel """
+        for conn_name, voltage in voltages.items():
+            channel = self._get_channel_num(conn_name)
+            self.caen.set_voltage(channel, voltage)
+            print(f"[{t:.3f}s] {conn_name} = {voltage}")
+
 
     def _get_channel_num(self, channel: str) -> int:
         ch_lower = channel.lower()
@@ -120,7 +134,6 @@ class CAENWorker(Worker):
         """transitions the device from buffered to manual mode to read/save measurements from hardware
         to the shot h5 file as results. 
         Runs at the end of the shot."""
-        self._finished_event.wait()
         rich_print(f"---------- Begin transition to Manual: ----------", color=BLUE)
         return True
 

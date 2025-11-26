@@ -137,8 +137,8 @@ class SerialTransport(Transport):
         if self.ser:
             try:
                 if self.ser.is_open:
-                    self.ser.flush()
                     self.ser.close()
+                self.ser = None
             except Exception:
                 pass
 
@@ -206,6 +206,11 @@ class CAENProtocol:
         self.transport = transport
         self.write_timeout = write_timeout
         self.read_timeout = read_timeout
+
+    def close(self):
+        if self.transport:
+            self.transport.close()
+            self.transport = None
 
     def _format_cmd(self, attribute: str, par: Optional[str] = None, val: Optional[str] = None, ch: Optional[int] = None) -> str:
         """ attribute is one of INFO/SET/MON."""
@@ -294,6 +299,9 @@ class CAENDevice:
             transport = EthTransport(host='192.168.0.250', port=1470)
 
         self.protocol = CAENProtocol(transport=transport)
+
+    def close(self):
+        self.protocol.close()
 
     # Board-level
     def read_board_serial(self) -> str:
