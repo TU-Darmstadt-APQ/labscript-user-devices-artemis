@@ -11,13 +11,58 @@ from datetime import datetime
 from .caen_protocol import CAENDevice
 import numpy as np
 
+STATUS_BITS_tech = {
+    0: "ON",
+    1: "Ramp UP",
+    2: "Ramp DOWN",
+    3: "OVC: IMON >= ISET", # overcurrent
+    4: "OVV: VMON > VSET + (2% of VSET) + 2V", # overvoltage
+    5: "ONV: VMON < VSET - (2% of VSET) - 2V", # undervoltage
+    6: "TRIP: Ch OFF via TRIP (Imon >= Iset during TRIP)",
+    7: "OVP : Output Power > Max",
+    8: "TWN: Temperature Warning",
+    9: "OVT: TEMP > 65°C",
+    10: "KILL: CH in KILL via front panel and back panel",
+    11: "INTLK: CH in INTERLOCK via front panel and back panel",
+    12: "ISDIS: CH is disabled",
+    13: "FAIL: Generic fail",
+    14: "LOCK: Ch control switch on ON/EN and one of these conditions is TRUE:",
+    15: "MAXV: VMON > HVMAX set via trimmer",
+}
+
+STATUS_BITS = {
+    0: "Channel is on",
+    1: "Channel is ramping up",
+    2: "Channel is ramping down",
+    3: "Channel is in overcurrent",
+    4: "Channel is in overvoltage",
+    5: "Channel is in undervoltage",
+    6: "TRIP: Ch OFF via TRIP (Imon >= Iset during TRIP)", # trip= max time overcurrent allowed to last
+    7: "Channel is in max V",
+    8: "Temperature Warning",
+    9: "Temperature over 65°C",
+    10: "Channel is in kill",
+    11: "Channel is in interlock",
+    12: "Channel is disabled",
+    13: "Channel is failed",
+    14: "Channel control switch on ON/EN",
+    15: "Channel is in overvoltage HVMAX set via trimmer",
+}
+
 class CAENWorker(Worker):
     def init(self):
         """Initializes connection to CAEN device (direct Serial or USB or Ethernet)"""
         self.caen = CAENDevice(port=self.port, baud_rate=self.baud_rate, pid=self.pid, vid=self.vid, serial_number=self.serial_number)
+
         for ch in range(8):
             self.caen.enable_channel(ch, True)
-            # print(self.caen.get_status(channel=ch))
+
+        print("#################### CH STATUS #####################")
+        for ch in range(8):
+            status = self.caen.get_status(channel=ch)
+            status_dec_str = self._decode_status(ch, int(status))
+            print(status_dec_str)
+        print("#####################################################")
 
         print("Control mode : ", self.caen.monitor_control_mode())
         print("Board serial number : ", self.caen.read_board_serial())
@@ -110,7 +155,8 @@ class CAENWorker(Worker):
             channel = self._get_channel_num(conn_name)
             self.caen.set_voltage(channel, voltage)
             print(f"[{t:.3f}s] {conn_name} = {voltage}")
-
+            status_decode = self._decode_status(ch=channel, st=int(self.caen.get_status(channel)))
+            print(status_decode)
 
     def _get_channel_num(self, channel: str) -> int:
         ch_lower = channel.lower()
@@ -129,6 +175,22 @@ class CAENWorker(Worker):
             raise ValueError(f"Unexpected channel name format: '{channel}'")
 
         return channel_num
+
+    def _decode_status(self, ch:int, st:int) -> str:
+        status = f"Channel {ch}: "
+        # print(f"[DEBUG]: {type(bits16)}  = {repr(bits16)}, {bits16}")
+
+        for bit, meaning in STATUS_BITS.items():
+            state = bool(st & (1 << bit))
+            if bit == 0 and state:
+                status += "ON"
+            elif bit == 0 and not state:
+                status += "OFF"
+            elif state:
+                status += "\n\t" + meaning
+            else:
+                continue
+        return status
 
     def transition_to_manual(self): 
         """transitions the device from buffered to manual mode to read/save measurements from hardware

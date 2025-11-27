@@ -12,6 +12,17 @@ In the user_devices directory, run the following command:
 import os, pty, time
 from logger_config import logger
 import random
+import re
+
+SET_CH_VOL = re.compile(r"^\$CMD:SET,CH:(.+),PAR:VSET(?:,VAL:.+)?$")
+MON_CH_VOL = re.compile(r"^\$CMD:MON,CH:(.+),PAR:VMON$")
+MON_CH_STATUS = re.compile(r"^\$CMD:MON,CH:(.+),PAR:STATUS$")
+SET_CH_EN = re.compile(r"^\$CMD:SET,CH:(.+),PAR:PW(?:,VAL:.+)?$")
+
+MON_BD_SNUM = re.compile(r"^\$CMD:MON,PAR:BDSNUM$")
+MON_BD_BDCTR =  re.compile(r"^\$CMD:MON,PAR:BDCTR$")
+
+
 
 def read_command(master):
     """ Reads the command until the '\r' character is encountered.
@@ -35,12 +46,18 @@ def test_serial():
         if command:
             print(f"command {command}")
             # logger.debug(f"[CAEN] command from remote: {command} ")
-            if command.startswith("$CMD:SET"):
+            if SET_CH_VOL.match(command) or SET_CH_EN.match(command):
                 response = "#CMD:OK\r\n"
-            elif command.startswith("$CMD:MON"):
+            elif MON_CH_VOL.match(command):
                 response = "#CMD:OK,VAL:2000.0\r\n"
-            elif command.startswith("$CMD:INFO"):
-                response = random.choice(["#CMD:OK,VAL:DT2000\r\n", "#CMD:OK,VAL:OK200\r\n"])
+            elif MON_CH_STATUS.match(command):
+                statuses = ["04096", "04112", "00001", "04096"]
+                status = random.choice(statuses)
+                response = f"#CMD:OK,VAL:{status}\r\n"
+            elif MON_BD_SNUM.match(command):
+                response = random.choice(["#CMD:OK,VAL:12000\r\n", "#CMD:OK,VAL:24200\r\n"])
+            elif MON_BD_BDCTR.match(command):
+                response = "#CMD:OK,VAL:REM\r\n"
             else:
                 response = "err\r\n"
             os.write(master, response.encode())
