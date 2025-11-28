@@ -301,6 +301,10 @@ class CAENDevice:
         self.protocol = CAENProtocol(transport=transport)
 
     def close(self):
+        # set VSET to 0 and disable
+        for ch in range(8):
+            self.set_voltage(ch, 0)
+            self.enable_channel(ch, False)
         self.protocol.close()
 
     # Board-level

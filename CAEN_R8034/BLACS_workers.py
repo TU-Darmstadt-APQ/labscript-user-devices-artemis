@@ -115,7 +115,7 @@ class CAENWorker(Worker):
         events = []
         for row in AO_data:
             t = row['time']
-            voltages = {ch: row[ch] for ch in row.dtype.names if ch != 'time'}
+            voltages = {self._get_channel_num(ch): row[ch] for ch in row.dtype.names if ch != 'time'}
             events.append((t, voltages))
 
         # NOTE: The last event is added only to ensure a non-zero experiment duration.
@@ -142,7 +142,7 @@ class CAENWorker(Worker):
             t, voltages = item
             try:
                 self._apply_event(t, voltages)
-                time.sleep(1) #fixme: wait until all voltages are set
+                self._block_until_set(voltages)
 
             except Exception as e:
                 logger.error("Error by setting voltages to CAEN", e)
@@ -151,12 +151,25 @@ class CAENWorker(Worker):
 
     def _apply_event(self, t, voltages):
         """ Assumption: only one value per channel """
-        for conn_name, voltage in voltages.items():
-            channel = self._get_channel_num(conn_name)
+        for channel, voltage in voltages.items():
             self.caen.set_voltage(channel, voltage)
-            print(f"[{t:.3f}s] {conn_name} = {voltage}")
-            status_decode = self._decode_status(ch=channel, st=int(self.caen.get_status(channel)))
-            print(status_decode)
+            if not self._check_channel_state(channel): # channel is not settable
+                rich_print(f" CH{channel} = {voltage} is OFF or/and disabled.", color=ORANGE)
+            else:
+                print(f"[{t:.3f}s] CH{channel} = {voltage}")
+
+    def _block_until_set(self, voltages):
+        delta = 1.0
+        settled = set()
+
+        while len(settled) < len(voltages):
+            for ch, target in voltages.items():
+                mon = self.caen.monitor_voltage(ch)
+                if ch not in settled and abs(mon - target) < delta:
+                    settled.add(ch)
+
+        rich_print(" ---- All channels settled ---- ", color=GREEN)
+
 
     def _get_channel_num(self, channel: str) -> int:
         ch_lower = channel.lower()
@@ -210,7 +223,10 @@ class CAENWorker(Worker):
             ch_num = self._get_channel_num(channel)
             self.caen.set_voltage(ch_num, voltage)
             # store the values from manual to hdf5 file.
-            print(f"→ {channel}: {voltage:.2f} V")
+            if not self._check_channel_state(ch_num):  # channel is not settable
+                rich_print(f" CH{ch_num} = {voltage} is OFF or/and disabled.", color=ORANGE)
+            else:
+                print(f"→ {channel}: {voltage:.2f} V")
             logger.info(f"[CAEN] Setting {channel} to {voltage:.2f} V (manual mode)")
         current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         self._append_front_panel_values_to_manual(self.front_panel_values, current_time)
@@ -223,6 +239,14 @@ class CAENWorker(Worker):
             mon_voltage = self.caen.monitor_voltage(ch_num)
             print(f"→ {channel}: Monitor: {mon_voltage:.2f} \t GUI: {voltage:.2f} V")
             logger.info(f"[CAEN] Monitoring {channel} with {mon_voltage:.2f} V (manual mode)")
+
+    def check_status(self, kwargs):
+        rich_print("Channels status", color=BLUE)
+        for channel in self.front_panel_values.keys():
+            ch_num = self._get_channel_num(channel)
+            status_str = self._decode_status(ch=ch_num, st=int(self.caen.get_status(ch_num)))
+            print(status_str)
+
 
     def _append_front_panel_values_to_manual(self, front_panel_values, current_time):
         """
@@ -267,5 +291,19 @@ class CAENWorker(Worker):
             # Add new row to table
             dset.resize(old_shape + 1, axis=0)
             dset[old_shape] = new_row[0]
+
+    def _check_channel_state(self, ch:int) -> bool:
+        settable = False
+        status = int(self.caen.get_status(ch))
+
+        bit0_on = bool(status & (1 << 0))  # 1 = ON, 0 = OFF
+        bit12_disabled = bool(status & (1 << 12))
+
+        if bit0_on and not bit12_disabled: # ON and not disabled
+            settable = True
+
+        return settable
 # --------------------contants
 BLUE = '#66D9EF'
+GREEN = '#008000'
+ORANGE = '#FFA500'
