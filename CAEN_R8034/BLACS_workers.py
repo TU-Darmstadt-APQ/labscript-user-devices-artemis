@@ -54,6 +54,20 @@ class CAENWorker(Worker):
         """Initializes connection to CAEN device (direct Serial or USB or Ethernet)"""
         self.caen = CAENDevice(port=self.port, baud_rate=self.baud_rate, pid=self.pid, vid=self.vid, serial_number=self.serial_number)
 
+        self.configure_device()
+
+        # setting values in separate thread
+        self.job_queue = queue.Queue()
+        self.worker_thread = threading.Thread(target=self._setting_loop, daemon=True)
+        self.worker_thread.start()
+
+    def configure_device(self):
+        """
+        1. Enable all channels
+        2. Check status
+        3. Set ramp rates for all channels
+        4. Monitor control mode and board serial number
+        """
         for ch in range(8):
             self.caen.enable_channel(ch, True)
 
@@ -64,13 +78,12 @@ class CAENWorker(Worker):
             print(status_dec_str)
         print("#####################################################")
 
+        self.caen.set_ramp_up_rate(channel=8, rate=self.ramp_up)
+        self.caen.set_ramp_down_rate(channel=8, rate=self.ramp_down)
+
         print("Control mode : ", self.caen.monitor_control_mode())
         print("Board serial number : ", self.caen.read_board_serial())
 
-        # setting values in separate thread
-        self.job_queue = queue.Queue()
-        self.worker_thread = threading.Thread(target=self._setting_loop, daemon=True)
-        self.worker_thread.start()
 
     def shutdown(self):
         """Closes connection."""
@@ -102,7 +115,6 @@ class CAENWorker(Worker):
         to the hardware. 
         Runs at the start of each shot."""
         rich_print(f"---------- Begin transition to Buffered: ----------", color=BLUE)
-        self.restored_from_final_values = False  # Drop flag
         self.h5file = h5_file  # Store path to h5 to write back from front panel
         self.device_name = device_name
 
@@ -129,7 +141,7 @@ class CAENWorker(Worker):
         self.job_queue.join() # blocks until all task are done
 
         # return last values to update GUI
-        final_values = events[-1][1]
+        final_values = {ch: AO_data[-1][ch] for ch in AO_data[-1].dtype.names if ch != 'time'}
         return final_values
 
     def _setting_loop(self):
@@ -142,7 +154,7 @@ class CAENWorker(Worker):
             t, voltages = item
             try:
                 self._apply_event(t, voltages)
-                self._block_until_set(voltages)
+                # self._block_until_set(voltages)
 
             except Exception as e:
                 logger.error("Error by setting voltages to CAEN", e)
@@ -191,7 +203,7 @@ class CAENWorker(Worker):
 
     def _decode_status(self, ch:int, st:int) -> str:
         status = f"Channel {ch}: "
-        # print(f"[DEBUG]: {type(bits16)}  = {repr(bits16)}, {bits16}")
+        # print(f"[DEBUG]: status: {repr(bits16)}, {bits16}")
 
         for bit, meaning in STATUS_BITS.items():
             state = bool(st & (1 << bit))

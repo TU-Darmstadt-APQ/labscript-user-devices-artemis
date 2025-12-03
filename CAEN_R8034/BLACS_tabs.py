@@ -3,6 +3,7 @@ from blacs.device_base_class import DeviceTab
 from qtutils.qt.QtWidgets import QPushButton, QSizePolicy as QSP, QHBoxLayout, QSpacerItem
 from user_devices.logger_config import logger
 from blacs.tab_base_classes import MODE_MANUAL
+import labscript_utils.properties
 
 class CAENTab(DeviceTab):
     def initialise_GUI(self):
@@ -57,21 +58,25 @@ class CAENTab(DeviceTab):
         device = self.settings['connection_table'].find_by_name(self.device_name)
         if device is None:
             raise ValueError(f"Device '{self.device_name}' not found in the connection table.")
-        
+
         # Look up at the connection table for device properties
         vid =  device.properties["vid"]
         pid = device.properties["pid"]
         port = device.properties["port"]
         baud_rate = device.properties["baud_rate"]
         serial_number = device.properties["serial_number"]
-        
+        ramp_up = device.properties["ramp_up"]
+        ramp_down = device.properties["ramp_down"]
+
         worker_kwargs = {
             "name": self.device_name + '_main',
             "port": port,
             "vid": vid,
             "pid": pid,
             "baud_rate": baud_rate,
-            "serial_number": serial_number
+            "serial_number": serial_number,
+            "ramp_up": ramp_up,
+            "ramp_down": ramp_down,
         }
         
         self.create_worker(
