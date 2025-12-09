@@ -13,7 +13,7 @@ if os.path.exists(CAPABILITIES_FILE):
 
 register_classes(
     "HV_",
-    BLACS_tab='user_devices.HV_stahl.BLACS_tabs.HV_Tab',
+    BLACS_tab='user_devices.HV_stahl_old.BLACS_tabs.HV_Tab',
     runviewer_parser=None,
 )
 
@@ -23,7 +23,7 @@ for model_name in capabilities:
     try:
         register_classes(
             model_name,
-            BLACS_tab='user_devices.HV_stahl.BLACS_tabs.HV_Tab',
+            BLACS_tab='user_devices.HV_stahl_old.BLACS_tabs.HV_Tab',
             runviewer_parser=None,
         )
     except Exception as e:
