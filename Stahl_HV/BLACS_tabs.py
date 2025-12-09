@@ -82,7 +82,7 @@ class HV_Tab(DeviceTab):
 
         self.create_worker(
             'main_worker',
-            'user_devices.HV_stahl_old.BLACS_workers.HV_Worker',
+            'user_devices.Stahl_HV.BLACS_workers.HV_Worker',
             worker_kwargs,
         )
 
