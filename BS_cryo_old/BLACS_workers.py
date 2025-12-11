@@ -146,7 +146,7 @@ class BS_cryoWorker(Worker):
         """
         if self.verbose is True:
             print("\nProgramming the device with the following values:")
-            logger.info("[BS_cryo] Programming the device from manual with the following values:")
+            logger.info("[BS_cryo_old] Programming the device from manual with the following values:")
 
         for channel_num in range(1, int(self.num_AO) + 1):
             channel_name = f'CH {channel_num}'
@@ -156,7 +156,7 @@ class BS_cryoWorker(Worker):
                 raise ValueError(f"Error accessing front panel values for channel '{channel_name}': {e}")
             if self.verbose:
                 print(f"→ {channel_name}: {voltage:.2f} V")
-            logger.info(f"[BS_cryo] Setting {channel_name} to {voltage:.2f} V (manual mode)")
+            logger.info(f"[BS_cryo_old] Setting {channel_name} to {voltage:.2f} V (manual mode)")
 
             self.bias_supply.set_voltage(channel_num, voltage)
 

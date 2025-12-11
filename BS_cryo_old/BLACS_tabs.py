@@ -85,7 +85,7 @@ class BS_cryoTab(DeviceTab):
         # Start a worker process
         self.create_worker(
             'main_worker',
-            'user_devices.BS_cryo.BLACS_workers.BS_cryoWorker',
+            'user_devices.BS_cryo_old.BLACS_workers.BS_cryoWorker',
             worker_kwargs,
         )
         self.primary_worker = "main_worker"
@@ -103,5 +103,5 @@ class BS_cryoTab(DeviceTab):
         try:
             yield (self.queue_work(self.primary_worker, 'send_to_BS', []))
         except Exception as e:
-            logger.debug(f"[BS_cryo] Error by send work to worker(send_to_BS): \t {e}")
+            logger.debug(f"[BS_cryo_old] Error by send work to worker(send_to_BS): \t {e}")
 
