@@ -4,47 +4,26 @@
 - [Developer installation](#developer-installation)
 - [First configuration](#configuring-the-labscript-suite-for-first-run)
 - [Adding a Custom Device to LabScript Suite](#adding-a-custom-device-to-labscript-suite)
-- [Simulating the devices Serial port]()
+- [Simulating the devices Serial port](#simulating-the-devices-serial-port)
+- [Troubleshooting](#Troubleshooting)
 
 ---
 
-## Developer installation
-1. Create and Activate a Virtual Environment
-```bash
-mkdir -p ~/labscript-suite
-python3.12 -m venv ~/labscript-suite/venv
-. ~/labscript-suite/venv/bin/activate
-cd ~/labscript-suite
-```
-2. Install LabScript Suite from GitHub
-```bash
-pip install --src . -e git+https://github.com/labscript-suite/blacs#egg=blacs
-pip install --src . -e git+https://github.com/labscript-suite/labscript#egg=labscript
-pip install  --src . -e git+https://github.com/labscript-suite/labscript-devices#egg=labscript-devices
-pip install --src . -e git+https://github.com/labscript-suite/labscript-utils#egg=labscript-utils
-pip install --src . -e git+https://github.com/labscript-suite/runmanager#egg=runmanager
-pip install --src . -e git+https://github.com/labscript-suite/runviewer#egg=runviewer
-pip install --src . -e git+https://github.com/labscript-suite/lyse#egg=lyse
-```
+## Installation
+1. Install the Labscript Suite using the TU-APQ repository:  [labscript-install](https://github.com/TU-Darmstadt-APQ/labscript-install).
+if not already installed. 
 
-3. Install  PyQt5 for GUI
-```bash
-pip install PyQt5
-```
+2. After successfully installing Labscript and all required drivers,
+clone this repository to: /labscript-suite/userlib/user_devices.
 
-4. Create LabScript profile (--> labscript-suite)
-```bash
-labscript-profile-create
-```
-
-5. Install Applications
-```bash
-desktop-app install blacs lyse runmanager runviewer
-```
-
----
 ## Configuring the labscript suite for first run
-To run all applications, you first need to configure the labconfig/example.ini file generated after creating the LabScript profile. More details can be found in the [LabScript Suite Configuration Guide](https://labscriptsuite.org/en/latest/setup/configuration/).
+To run all applications, you first need to configure the labconfig/<your_name>.ini 
+file generated after creating the LabScript profile. 
+More details can be found in the [LabScript Suite Configuration Guide](https://labscriptsuite.org/en/latest/setup/configuration/).
+
+Important:
+Update the user_devices path in your <your_name>.ini to point to the 
+cloned user_devices directory. 
 
 1. Run Runmanager
 
@@ -75,24 +54,24 @@ cd MyCustomDevice
 touch __init__.py BLACS_tabs.py BLACS_workers.py labscript_devices.py register_classes.py MyCustomDevice.md
 ```
 
-4. Write Code for Your Device:
+4. Implement your device:
 
-- Implement the device functionality.
-- Add registration code in register_classes.py to integrate your device with the system.
-- Provide device documentation in the MyCustomDevice.md file.
+- Describe the device in labscript_devices.py.
+- Register the device in register_classes.py to integrate your device with the system.
+- Optionally, add documentation in MyCustomDevice.md file.
 
-5. Modify the connection_table.py file in userlib/labscriptlib/example_apparatus/ to include your new device.
+5. Modify the connection_table.py file in userlib/labscriptlib/example_apparatus/ 
+to include your new device.
 
-6. Run BLACS with Your New Device: After updating the connection table, start BLACS. You should see a new tab for your custom device.
-
-
+Or also see [docu](https://github.com/labscript-suite/blacs/blob/master/docs/How%20to%20add%20a%20new%20device/main.pdf)
 
 ---
 
 ## Simulating the devices Serial port
-If you don't have access to the actual device, but want to test your code, you can simulate the device's serial port using provided script in each user_device folder. 
+If you don't have access to the actual device, but want to test your code, 
+you can simulate the device's serial port using provided script in each user_device folder. 
 
-1. Navigate to the Device Directory:
+1. Navigate to the device's folder:
 ```bash
 cd path/to/user_devices/CustomDevice
 ```
@@ -103,27 +82,49 @@ python3 emulateSerPort.py
 3. Interacting with the simulation: Once the script is running, it will provide the simulated serial port (e.g. `/dev/pts/1`), which you can use in your connection table. 
 4. Close the simulation when no longer needed (e.g. `Ctrl+C`): It will close the simulated serial port. 
 
+---
+## good-to-know
+#### HDF files
+ The HDF file begins life containing only experiment parameters. As it is passed between components of the labscript suite, 
+ the file grows to contain the hardware instructions, acquired data, and analysis results. 
+ The GUI, runmanager, creates the HDF file for the experiment shot and stores the parameters within. 
+ If a parameter is a list of values, rather than a single value, 
+ runmanager creates an HDF file (a prospective shot) for each value.
 
-## Knowledge gathering
-#### Kinds of Devices
+#### Types of Devices
 - Device: parent class for all devices (labscript.base)
-- IntermediateDevice: base class for all devices that are to be clocked by a pseudoclock (labscript.core)
+- IntermediateDevice: base class for all devices that are to be clocked 
+by a pseudoclock (labscript.core)
 
-#### Core functions
-- generate_code(): should process any instructions the user has added in their labscript code, converting them to the low-level instructions that need to be programmed into the device, and then save those instructions to the shot file.
+## Troubleshooting
+### TypeError: Argument 'linger' has incorrect type
+When closing the BLACS app, you may encounter an error from the `pyzmq` library:
+`TypeError: Argument 'linger' has incorrect type (expected int, got bool)`
 
-#### Technical tipps
-- controls for devices in BLACS should be labeled with using both the hardware I/O port name 
-and a user specified name from the connection table of a labscript file
+This means the sock.close() method was given a bool instead of an int.
 
-- serial ports can be listed with: `ls /dev/tty*` , `ls /dev/pts*`
-- open serial port can be displayed with: `lsof | grep /dev/pts/X`
+To fix it, modify the following lines in clientserver.py, under e.g.
+`/home/<your_name>/labscript-suite/venv/lib/python3.12/site-packages/zprocess/clientserver.py`:
 
-## Other user_devices
+Original:
+```python
+        # line 242-243
+        sock.close(linger=True) 
+        self.sock.close(linger=False)
+```
+Fixed
+```python
+        sock.close(linger=1)
+        self.sock.close(linger=0)
+```
 
-- https://github.com/TU-Darmstadt-APQ/QUIPS_C-Userlib/blob/master/user_devices/Due_AD9910/blacs_tabs.py
-- https://github.com/fretchen/synqs_devices/blob/master/SynthHDDevice/blacs_tabs.py
-- https://github.com/zakv/RbLab_user_devices/blob/master/elliptec/blacs_workers.py
-- https://github.com/naqslab/naqslab_devices/blob/master/README.md
-- https://github.com/fretchen/synqs_devices/blob/master/yun_temp/blacs_tabs.py
-- https://gitlab.tuwien.ac.at/quantuminfo/experiment-control/labscript-userlib/leolab_devices
+### ModuleNotFoundError: No module named 'labscript_devices.CustomDevice'
+This can happen if there’s a mismatch between your user_devices 
+folder you using and the one defined in .ini file. Go back to the 
+[Initial Configuration](#configuring-the-labscript-suite-for-first-run) 
+section and verify that your .ini file correctly points to the user_devices folder.
+
+
+
+
+
