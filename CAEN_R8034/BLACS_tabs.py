@@ -20,11 +20,11 @@ class CAENTab(DeviceTab):
 
         for i in range(8):
             if bipol and i >= 4:
-                ch_min, ch_max = -self.base_max, self.base_max
+                ch_min, ch_max = -self.base_max, self.base_min
             else:
                 ch_min, ch_max = self.base_min, self.base_max
 
-            analog_properties['CH %d' % i] = {
+            analog_properties['ch %d' % i] = {
                 'base_unit': self.base_unit,
                 'min': ch_min,
                 'max': ch_max,

@@ -129,20 +129,23 @@ class CAENWorker(Worker):
             t = row['time']
             voltages = {self._get_channel_num(ch): row[ch] for ch in row.dtype.names if ch != 'time'}
             events.append((t, voltages))
-
-        # NOTE: The last event is added only to ensure a non-zero experiment duration.
-        # If it duplicates the previous event, it is safe to drop it.
-        if events[-1][1] == events[-2][1]:
-            events = events[:-1]
+            break # we only need initial values to pre-program
 
         for event in events:
             self.job_queue.put(event)
 
+        start_time = time.perf_counter()
+        self.start_time = start_time
+
         self.job_queue.join() # blocks until all task are done
 
         # return last values to update GUI
-        final_values = {ch: AO_data[-1][ch] for ch in AO_data[-1].dtype.names if ch != 'time'}
+        last_voltages = events[-1][1]
+        final_values = {"ch %d" % ch: val for ch, val in last_voltages.items()}
+        rich_print(f"---------- End transition to Buffered: ----------", color=BLUE)
+
         return final_values
+
 
     def _setting_loop(self):
         while True:
@@ -151,9 +154,9 @@ class CAENWorker(Worker):
                 self.job_queue.task_done()
                 break
 
-            t, voltages = item
+            event_time, voltages = item
             try:
-                self._apply_event(t, voltages)
+                self._apply_event(event_time, voltages, self.start_time)
                 # self._block_until_set(voltages)
 
             except Exception as e:
@@ -161,14 +164,15 @@ class CAENWorker(Worker):
             finally:
                 self.job_queue.task_done()
 
-    def _apply_event(self, t, voltages):
-        """ Assumption: only one value per channel """
+    def _apply_event(self, t, voltages, start_time):
+        print(f"[{t}]")
         for channel, voltage in voltages.items():
             self.caen.set_voltage(channel, voltage)
             if not self._check_channel_state(channel): # channel is not settable
-                rich_print(f" CH{channel} = {voltage} is OFF or/and disabled.", color=ORANGE)
+                rich_print(f" ch{channel} = {voltage} is OFF or/and disabled.", color=ORANGE)
             else:
-                print(f"[{t:.3f}s] CH{channel} = {voltage}")
+                elapsed = time.perf_counter() - (start_time or 0)
+                print(f"[{elapsed:.3f}s] ch{channel} = {voltage}")
 
     def _block_until_set(self, voltages):
         delta = 1.0
@@ -179,23 +183,29 @@ class CAENWorker(Worker):
                 mon = self.caen.monitor_voltage(ch)
                 if ch not in settled and abs(mon - target) < delta:
                     settled.add(ch)
+            time.sleep(0.001)
 
         rich_print(" ---- All channels settled ---- ", color=GREEN)
 
 
     def _get_channel_num(self, channel: str) -> int:
         ch_lower = channel.lower()
-        if ch_lower.startswith("ao "):
+        if ch_lower.startswith("ch "):
+            channel_num = int(ch_lower[3:].strip())  # 'ch 0', 'ch 3', 'ch 7' -> 0, 3, 7
+            return channel_num
+        elif ch_lower.startswith("ch"):
+            channel_num = int(ch_lower[2:].strip())  # 'ch0', 'ch03', 'ch7' -> 0, 3, 7
+            return channel_num
+        elif ch_lower.startswith("ao "):
             channel_num = int(ch_lower[3:])  # 'ao 3' -> 3
+            return channel_num
         elif ch_lower.startswith("ao"):
             channel_num = int(ch_lower[2:])  # 'ao3' -> 3
+            return channel_num
         elif ch_lower.startswith("channel"):
             _, channel_num_str = channel.split()  # 'channel 1' -> 1
             channel_num = int(channel_num_str)
-        elif ch_lower.startswith("ch "):
-            channel_num = int(ch_lower[3:].strip())  # 'ch 0', 'ch 3', 'ch 7' -> 0, 3, 7
-        elif ch_lower.startswith("ch"):
-            channel_num = int(ch_lower[2:].strip())  # 'ch0', 'ch03', 'ch7' -> 0, 3, 7
+            return channel_num
         else:
             raise ValueError(f"Unexpected channel name format: '{channel}'")
 
@@ -231,6 +241,7 @@ class CAENWorker(Worker):
         return self.abort_transition_to_buffered()
 
     def reprogram_CAEN(self, kwargs):
+        rich_print("Reprogramming...", color=BLUE)
         for channel, voltage in self.front_panel_values.items():
             ch_num = self._get_channel_num(channel)
             self.caen.set_voltage(ch_num, voltage)

@@ -6,7 +6,7 @@ You will create a virtual serial port using this script. This script will act as
 The virtual serial port should stay open while the simulation is running, so other code that expects to interact with the serial device can do so just as if the actual device were connected.
 
 In the user_devices directory, run the following command:
-    python3 -m CAEN_R8034.emulateSerPort
+    python3 -m CAEN_R8034.testing.emulateSerPort
 
 """
 import os, pty, time

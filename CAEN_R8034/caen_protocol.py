@@ -333,7 +333,7 @@ class CAENDevice:
         self.protocol.query(cmd, expect_val=False)
 
     def set_voltage(self, channel: int, voltage: float):
-        cmd = self.protocol.make_set("VSET", val=str(float(voltage)), ch=channel)
+        cmd = self.protocol.make_set("VSET", val=str(abs(float(voltage))), ch=channel)
         self.protocol.query(cmd, expect_val=False)
 
     def monitor_voltage(self, channel: int) -> float:
