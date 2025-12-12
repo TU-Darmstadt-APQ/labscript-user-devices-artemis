@@ -354,12 +354,12 @@ class CAENDevice:
         except Exception as e:
             raise ProtocolError(f"Failed to parse IMON response '{val}': {e}")
 
-    def set_ramp_up_rate(self, channel: int, rate: float):
-        cmd = self.protocol.make_set("RUP", val=str(float(rate)), ch=channel)
+    def set_ramp_up_rate(self, channel: int, rate: int):
+        cmd = self.protocol.make_set("RUP", val=str(rate), ch=channel)
         return self.protocol.query(cmd, expect_val=False)
 
-    def set_ramp_down_rate(self, channel: int, rate: float):
-        cmd = self.protocol.make_set("RDWN", val=str(float(rate)), ch=channel)
+    def set_ramp_down_rate(self, channel: int, rate: int):
+        cmd = self.protocol.make_set("RDWN", val=str(rate), ch=channel)
         return self.protocol.query(cmd, expect_val=False)
 
     def trip(self, channel: int, time_s: float):
