@@ -5,21 +5,24 @@ import h5py
 import numpy as np
 from labscript_devices.NI_DAQmx.utils import split_conn_DO, split_conn_AO
 from user_devices.logger_config import logger
+from user_devices.Stahl_HV.labscript_devices import AnalogOutStahl
 
 
 class BS_cryo(IntermediateDevice):
     description = 'BS_cryo_bias_supply'
+    allowed_children = [AnalogOutStahl, AnalogOut]
 
     @set_passed_properties(
         property_names={
             "connection_table_properties": [
-                "static_AO",
                 "baud_rate",
                 "port",
-                "num_AO",
-                "AO_ranges",
-                "default_voltage_range",
-                "supports_custom_voltages_per_channel",
+                "vid",
+                "pid",
+                "num_ao",
+                "ao_range",
+                "serial_number",
+                "pre_programmed",
             ],
         }
     )
@@ -29,57 +32,35 @@ class BS_cryo(IntermediateDevice):
             port='',
             baud_rate=9600,
             parent_device=None,
-            num_AO=0,
-            static_AO=None,
-            AO_ranges=[],
-            default_voltage_range=[],
-            supports_custom_voltages_per_channel=False,
+            vid=None,
+            pid=None,
+            num_ao=None,
+            ao_range=None,
+            serial_number=None,
+            pre_programmed=False,
             **kwargs
     ):
-        """Initialize a generic BS-series analog output device.
+        super().__init__(name, parent_device, **kwargs)
+        if port:
+            self.BLACS_connection = '%s,%s' % (port, str(baud_rate))
+        if vid and pid:
+            self.BLACS_connection = '%s,%s' % (vid, pid)
 
-        This constructor supports both devices that share a global analog output
-        voltage range, and those that allow custom voltage ranges per channel.
-
-        Args:
-           name (str): Name to assign to the created labscript device.
-           port (str): Serial port used to connect to the device (e.g. COM3, /dev/ttyUSB0)
-           baud_rate (int):
-           parent_device (clockline): Parent clockline device that will
-               clock the outputs of this device
-           num_AO (int): Number of analog output channels.
-           AO_ranges (list of dict, optional): A list specifying the voltage range for each AO channel,
-            used only if `supports_custom_voltages_per_channel` is True.
-            Each item should be a dict of the form:
-                {
-                    "channel": <int>,  # Channel index
-                    "voltage_range": [<float>, <float>]  # Min and max voltage
-                }
-           static_AO (int, optional): Number of static analog output channels.
-           default_voltage_range (iterable): A `[Vmin, Vmax]` pair that sets the analog
-                output voltage range for all analog outputs.
-           supports_custom_voltages_per_channel (bool): Whether this device supports specifying
-            individual voltage ranges for each AO channel.
-        """
-        self.num_AO = num_AO
-        if supports_custom_voltages_per_channel:
-            if len(AO_ranges) < num_AO:
-                raise ValueError(
-                    "AO_ranges must contain at least num_AO entries when custom voltage ranges are enabled.")
-            else:
-                self.AO_ranges = AO_ranges
-        else:
-            self.default_voltage_range = default_voltage_range
-
-        IntermediateDevice.__init__(self, name, parent_device, **kwargs)
-        self.BLACS_connection = '%s,%s' % (port, str(baud_rate))
+        self.ao_range = ao_range
+        self.num_ao = num_ao
+        self.port = port
+        self.vid = vid
+        self.pid = pid
+        self.baud_rate = baud_rate
+        self.serial_number = serial_number
+        self.pre_programmed = pre_programmed
 
     def add_device(self, device):
-        IntermediateDevice.add_device(self, device)
+        super().add_device(device)
 
     def generate_code(self, hdf5_file):
         """Convert the list of commands into numpy arrays and save them to the shot file."""
-        logger.info("[BS_cryo] generate_code for BS cryo is called")
+        logger.info("[BS_cryo_old] generate_code for BS cryo is called")
         IntermediateDevice.generate_code(self, hdf5_file)
 
         clockline = self.parent_device
@@ -94,8 +75,6 @@ class BS_cryo(IntermediateDevice):
 
         AO_table = self._make_analog_out_table(analogs, times)
         AO_manual_table = self._make_analog_out_table_from_manual(analogs)
-        logger.info(f"[BS_cryo] Times in generate_code AO table: {times}")
-        logger.info(f"[BS_cryo] AO table for HV-Series is: {AO_table}")
 
         group = self.init_device_group(hdf5_file)
         group.create_dataset("AO_buffered", data=AO_table, compression=config.compression)
@@ -115,10 +94,9 @@ class BS_cryo(IntermediateDevice):
 
         n_timepoints = len(times)
         dtypes = [('time', np.float64)] + [(c, np.float32) for c in analogs]  # first column = time
-
         analog_out_table = np.empty(n_timepoints, dtype=dtypes)
-
         analog_out_table['time'] = times
+
         for connection, output in analogs.items():
             analog_out_table[connection] = output.raw_output
 
