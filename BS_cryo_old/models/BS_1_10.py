@@ -1,4 +1,4 @@
-from user_devices.BS_cryo.labscript_devices import BS_cryo
+from user_devices.BS_cryo_old.labscript_devices import BS_cryo
 import json
 import os
 

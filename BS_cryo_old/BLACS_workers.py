@@ -99,11 +99,12 @@ class BS_cryoWorker(Worker):
         self.thread = threading.Thread(target=self._run_experiment_sequence, args=(events,))
         self.thread.start()
 
-        return
+        return {}
 
     def _run_experiment_sequence(self, events):
         try:
             start_time = time.time()
+            prev_cmd_time = None
             for t, voltages in events:
                 now = time.time()
                 wait_time = t - (now - start_time)
@@ -111,11 +112,19 @@ class BS_cryoWorker(Worker):
                     time.sleep(wait_time)
                 print(f"[Time: {datetime.now()}] \n")
                 for conn_name, voltage in voltages.items():
+                    # measure the real time spacing between commands
+                    now_cmd_time = time.time()
+                    if prev_cmd_time is None:
+                        dt = 0.0
+                    else:
+                        dt = now_cmd_time - prev_cmd_time
+                    prev_cmd_time = now_cmd_time
+
                     channel_num = _get_channel_num(conn_name)
                     self.bias_supply.set_voltage(channel_num, voltage)
                     self.final_values[channel_num] = voltage
                     if self.verbose:
-                        print(f"[{t:.3f}s] --> Set {conn_name} (#{channel_num}) = {voltage}")
+                        print(f"[{t:.3f}s] Δt={dt:.3f} s  --> Set {conn_name} (#{channel_num}) = {voltage}")
                     if self._stop_event.is_set():
                         return
         finally:

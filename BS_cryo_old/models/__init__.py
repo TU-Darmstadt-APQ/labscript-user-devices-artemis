@@ -14,6 +14,6 @@ __all__ = []
 # Import all subclasses into the global namespace:
 for model_name in capabilities:
     class_name = model_name
-    path = f'user_devices.BS_cryo.models.{model_name}.{class_name}'
+    path = f'user_devices.BS_cryo_old.models.{model_name}.{class_name}'
     globals()[class_name] = import_class_by_fullname(path)
     __all__.append(class_name)
