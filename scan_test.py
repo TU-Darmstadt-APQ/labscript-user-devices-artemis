@@ -1,34 +1,11 @@
-# ~/labscript-suite/userlib/labscriptlib/example_apparatus/scan_test.py
-
 from labscript import start, stop, add_time_marker, AnalogOut, DigitalOut
 from labscript_devices.DummyPseudoclock.labscript_devices import DummyPseudoclock
 from labscript_devices.DummyIntermediateDevice import DummyIntermediateDevice
 from labscript_devices.DummyPseudoclock.labscript_devices import DummyPseudoclock
 from labscript_devices.DummyIntermediateDevice import DummyIntermediateDevice
 from labscript import *
-
+import sys
 from labscriptlib.example_apparatus.connection_table import *
-
-def build_connectiontable():
-    DummyPseudoclock('pseudoclock')
-    DummyIntermediateDevice('intermediatedevice', parent_device=pseudoclock.clockline)
-    clockline = pseudoclock.clockline
-    Trigger('camera_trigger', parent_device=intermediatedevice, connection='do0')
-
-    # init_BNC_575()
-    # init_BS_10(clockline)
-    # init_BS_8(clockline)
-    # init_HV_250_8(clockline)
-    # init_BS_341A(clockline)
-    # init_UM(pseudoclock.clockline)
-    # init_CAEN_bipol(clockline)
-    init_CAEN_monopol(clockline)
-    # init_HV_200_8(clockline)
-    # init_BNC_575()
-    # init_IDS(camera_trigger)
-    init_IDS_UI()
-    init_picoscope_173()
-    # init_alvium()
 
 
 build_connectiontable()
@@ -38,38 +15,56 @@ t = 0
 add_time_marker(t, "start_initialization_test", verbose=True)
 start()
 
-picoscope_173.set_stream_sampling(sampling_rate=4e6, no_post_trigger_samples=10000)
-picoscope_173.set_simple_trigger(source="channel_A", threshold=2.9, direction='falling', delay_samples=0,
-                                 auto_trigger_s=0)
-picoscope_173.signal_generator_config(offset_voltage=0, pk2pk=2, wave_type='square')
-
-IDSCameraUI5240SE.expose("image_111", "frametype_111")
-IDSCameraUI5240SE.expose("image_222", "frametype_111")
-
-# IDSCameraUI5240SE.expose("image_111", "frametype_222")
-# IDSCameraUI5240SE.expose("image_222", "frametype_333")
-# picoscope_173.set_stream_sampling(sampling_rate=4e6, noPostTriggerSamples=10000)
-# picoscope_173.run_mode('stream')
-# picoscope_173.set_simple_trigger(source="channel_A", threshold_mV=2900, direction='rising', delay_samples=0, autoTrigger_ms=0)
-# picoscope.set_trigger_conditions(sources=["Channel_A"], info="add")
-# picoscope.set_trigger_direction(source="Channel_A", direction="rising")
-# picoscope.set_trigger_properties(source="Channel_A", thresholdMode="level", thresholdUpper_mV=5000, thresholdUpperHysteresis_mV=0.1, thresholdLower_mV=0, thresholdLowerHysteresis_mV=0.1)
-# picoscope.set_trigger_delay(delay_samples=20)
-# picoscope.signal_generator_config(0,200000,'sine')
-
-# BNC
+# IDSCameraUI5240SE.expose("ion_detect", "ions")
 
 # CAEN
-# t += 1
 sikler1_north.constant(t=t, value=sikler1_north_v)
 sikler1_south.constant(t=t, value=sikler1_south_v)
-sikler1_east.constant(t=t, value=100)
-# aaa.constant(t=t, value=aaa_v)
-# bbb.constant(t=t, value=bbb_v)
-# ccc.constant(t=t, value=-555)
+sikler1_east.constant(t=t, value=sikler1_east_v)
+sikler1_west.constant(t=t, value=sikler1_west_v)
+sikler2_north.constant(t=t, value=sikler2_north_v)
+sikler2_south.constant(t=t, value=sikler2_south_v)
+sikler2_east.constant(t=t, value=sikler2_east_v)
+sikler2_west.constant(t=t, value=sikler2_west_v)
+
+caen_2.constant(t=t, value=caen_2_v)
+caen_3.constant(t=t, value=caen_3_v)
+caen_4.constant(t=t, value=caen_4_v)
+caen_5.constant(t=t, value=caen_5_v)
+caen_6.constant(t=t, value=caen_6_v)
+caen_7.constant(t=t, value=caen_7_v)
 
 
-# t += 1
+
+# ch_1_200.constant(t=t, value=11)
+# ch_4_200.ramp(t=t, duration=2, initial=20, final=60, samplerate=1)
+# ch_5_250.ramp(t=t, duration=2, initial=200, final=222, samplerate=1)
+
+# BS_10_0.constant(t=t, value=10)
+# BS_10_1.constant(t=t, value=10)
+# BS_10_2.constant(t=t, value=10)
+# BS_10_3.constant(t=t, value=10)
+# BS_10_4.constant(t=t, value=10)
+# BS_10_5.constant(t=t, value=10)
+# BS_10_6.constant(t=t, value=10)
+# BS_10_7.constant(t=t, value=10)
+# BS_10_8.constant(t=t, value=10)
+# BS_10_9.constant(t=t, value=10)
+
+# ch_1_250.constant(t=t, value=250)
+# ch_4_250.ramp(t=t, duration=5, initial=4, final=10, samplerate=1)
+
+
+# BS_10_0.constant(t=t, value=1)
+# BS_10_1.constant(t=t, value=1)
+# BS_10_2.constant(t=t, value=1)
+# BS_10_3.constant(t=t, value=1)
+# BS_10_4.constant(t=t, value=1)
+# BS_10_5.constant(t=t, value=1)
+# BS_10_6.constant(t=t, value=1)
+# BS_10_7.constant(t=t, value=1)
+# BS_10_8.constant(t=t, value=1)
+# BS_10_9.constant(t=t, value=5)
 
 # BS 1-8
 # BS_18_analog_output_1.constant(t=t, value=6.000)
@@ -99,4 +94,6 @@ sikler1_east.constant(t=t, value=100)
 # t += 1
 # ao0_bs_norm.constant(t=t, value=15)
 
-stop(t+0.0001)
+t = t + 0.0001
+stop(t)
+
