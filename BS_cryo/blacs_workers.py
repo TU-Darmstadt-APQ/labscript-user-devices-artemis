@@ -394,6 +394,9 @@ class BS_Worker(Worker):
     def abort_transition_to_buffered(self):
         return self.transition_to_manual()
 
+    def abort_buffered(self):
+        return self.abort_transition_to_buffered()
+
     def transition_to_manual(self):
         rich_print(f"---------- Start transition to Manual: ----------", color=BLUE)
 
