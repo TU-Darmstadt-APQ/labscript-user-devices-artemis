@@ -157,7 +157,7 @@ class CAENWorker(Worker):
             event_time, voltages = item
             try:
                 self._apply_event(event_time, voltages, self.start_time)
-                # self._block_until_set(voltages)
+                self._block_until_set(voltages)
 
             except Exception as e:
                 logger.error("Error by setting voltages to CAEN", e)
@@ -174,19 +174,69 @@ class CAENWorker(Worker):
                 elapsed = time.perf_counter() - (start_time or 0)
                 print(f"[{elapsed:.3f}s] ch{channel} = {voltage}")
 
-    def _block_until_set(self, voltages):
+    def _block_until_set(self, voltages, timeout=100):
+        """
+        Block execution until all requested channel voltages are settled or a timeout occurs.
+
+        This method continuously monitors the voltage of each specified channel and compares
+        it to the requested target value. A channel is considered "settled" when the absolute
+        difference between the monitored voltage and the target voltage is within a fixed
+        tolerance (`delta = 1.0`). The method polls the device every 0.1 seconds.
+
+        If all channels settle before the timeout expires, exits early and reports
+        success. If the timeout is reached before all channels settle, the method records the
+        failure, reports which channels failed to reach their targets, and returns see
+        detailed failure information.
+
+        Parameters
+        ----------
+        voltages : Dict of channel numbers to target voltages.
+        timeout : int, optional
+        Maximum number of polling iterations to wait before timing out.
+        Each iteration waits 0.1 seconds, so the total wait time is approximately
+        `timeout * 0.1` seconds. Default is 100 (=10 seconds).
+
+        Returns
+        -------
+        list[tuple[int, float, float]]
+            A list of failures in the form `(channel, target_voltage, monitored_voltage)`
+            for each channel that did not settle within the timeout.
+            Returns an empty list if all channels successfully settled.
+        """
+
         delta = 1.0
         settled = set()
+        failed = []
 
-        while len(settled) < len(voltages):
+        for _ in range(timeout):
             for ch, target in voltages.items():
+                if ch in settled:
+                    continue
+
                 mon = self.caen.monitor_voltage(ch)
-                if ch not in settled and abs(mon - target) < delta:
+                if abs(mon - abs(target)) < delta:
                     settled.add(ch)
-            time.sleep(0.001)
 
-        rich_print(" ---- All channels settled ---- ", color=GREEN)
+            if len(settled) == len(voltages):
+                break
+            time.sleep(0.1)
 
+        # After timeout, check which channels failed
+        if len(settled) < len(voltages):
+            self.failed_set = True
+
+            for ch, target in voltages.items():
+                if ch not in settled:
+                    mon = self.caen.monitor_voltage(ch)
+                    failed.append((ch, target, mon))
+                    rich_print(
+                        f"Failed to set {target} on ch{ch}. Current voltage={mon}",
+                        color=ORANGE
+                    )
+        else:
+            rich_print(" ---- All channels settled ---- ", color=GREEN)
+
+        return failed
 
     def _get_channel_num(self, channel: str) -> int:
         ch_lower = channel.lower()
@@ -232,6 +282,7 @@ class CAENWorker(Worker):
         to the shot h5 file as results. 
         Runs at the end of the shot."""
         rich_print(f"---------- Begin transition to Manual: ----------", color=BLUE)
+        # todo: if settling during transition-to-buffered failed, write it in hdf5
         return True
 
     def abort_transition_to_buffered(self):
