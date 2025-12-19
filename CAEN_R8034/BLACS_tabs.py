@@ -7,19 +7,22 @@ import labscript_utils.properties
 
 class CAENTab(DeviceTab):
     def initialise_GUI(self):
+        device = self.settings['connection_table'].find_by_name(self.device_name)
+        bipol = device.properties['bipol']
+        output_voltage = device.properties['output_voltage']
+        self.ch_num = device.properties['ch_num']
+
         # Analog output properties dictionary
         self.base_unit = 'V'
         self.base_min = 0
-        self.base_max = 6000
+        self.base_max = output_voltage
         self.base_step = 10
         self.base_decimals = 4
 
-        device = self.settings['connection_table'].find_by_name(self.device_name)
-        bipol = device.properties['bipol']
         analog_properties = {}
 
-        for i in range(8):
-            if bipol and i >= 4:
+        for i in range(self.ch_num):
+            if bipol and i >= self.ch_num/2:
                 ch_min, ch_max = -self.base_max, self.base_min
             else:
                 ch_min, ch_max = self.base_min, self.base_max
@@ -67,6 +70,11 @@ class CAENTab(DeviceTab):
         serial_number = device.properties["serial_number"]
         ramp_up = device.properties["ramp_up"]
         ramp_down = device.properties["ramp_down"]
+        timeout = device.properties["timeout"]
+        threshold = device.properties["threshold"]
+        decay_time = device.properties["decay_time"]
+        channels_status = self.get_channel_status()
+        output_voltage = device.properties["output_voltage"]
 
         worker_kwargs = {
             "name": self.device_name + '_main',
@@ -77,6 +85,12 @@ class CAENTab(DeviceTab):
             "serial_number": serial_number,
             "ramp_up": ramp_up,
             "ramp_down": ramp_down,
+            "timeout": timeout,
+            "threshold": threshold,
+            "channels_status": channels_status,
+            "decay_time": decay_time,
+            "output_voltage": output_voltage,
+            "ch_num": self.ch_num,
         }
         
         self.create_worker(
@@ -86,7 +100,17 @@ class CAENTab(DeviceTab):
             )
         
         self.primary_worker = "main_worker"
-        
+
+    def get_channel_status(self):
+        """Return channel-specific enable/disable status, only for initialized in connection table channels."""
+        enabled_channels = {}
+        for i in range(self.ch_num):
+            ch = self.get_child_from_connection_table(self.device_name, "ch %d" % i)
+            if ch:
+                enabled_channels[i] = ch.properties.get("enable")
+
+        return enabled_channels
+
     @define_state(MODE_MANUAL, True)
     def reprogram_CAEN(self):
         """Queue a manual send-to-device operation from the GUI."""

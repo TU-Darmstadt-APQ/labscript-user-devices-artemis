@@ -1,24 +1,31 @@
-#from labscript import AnalogOut
 from labscript_devices import register_classes
 from labscript import Device, set_passed_properties, config
 from labscript import IntermediateDevice
 from labscript import AnalogOut
 from labscript import LabscriptError
-import time
 import numpy as np
 import h5py
-import os
 from user_devices.logger_config import logger
 
 
+class CaenAnalogOut(AnalogOut):
+    @set_passed_properties(
+        property_names={"connection_table_properties": ["enable"]}
+    )
+    def __init__(self, name, parent_device, connection, enable:bool=True, **kwargs):
+        super().__init__(name, parent_device, connection, **kwargs)
+        self.enable = enable
 
 class CAEN(IntermediateDevice):
     description = 'CAEN_R8034'
-    allowed_children = [AnalogOut]
+    allowed_children = [AnalogOut, CaenAnalogOut]
 
-    @set_passed_properties({"connection_table_properties": ["port", "baud_rate", "pid", "vid", "serial_number", "bipol", "ramp_up", "ramp_down"],
+    @set_passed_properties({"connection_table_properties": ["port", "baud_rate", "pid", "vid", "serial_number",
+                                                            "bipol", "ramp_up", "ramp_down", "timeout", "threshold",
+                                                            "ch_num", "output_voltage", "decay_time"],
                             "device_properties": []})
-    def __init__(self, name, port=None, vid=None, pid=None, baud_rate=9600, serial_number=None, bipol=False, parent_device=None, ramp_up:int=10, ramp_down:int=10, connection=None, **kwargs):
+    def __init__(self, name, port=None, vid=None, pid=None, baud_rate=9600, serial_number=None, bipol=False, parent_device=None, ramp_up:int=10, ramp_down:int=10,
+                 timeout=None, threshold=None, decay_time=None, ch_num=8, output_voltage=6000, connection=None, **kwargs):
         """
         Initialize a CAEN R8034 high-voltage power supply device for Labscript.
 
@@ -42,6 +49,10 @@ class CAEN(IntermediateDevice):
             Maximum voltage increase rate in V/s. Defaults to 10 V/s.
         :param ramp_down: int, optional
             Maximum voltage decrease rate in V/s. Defaults to 10 V/s.
+        :param timeout: int
+            Maximum time to wait for all channels to settle, in seconds.
+        :param threshold: int, float
+            Allowed absolute voltage deviation to consider a channel settled
         :param connection: str, optional
             Connection string for the device (not used, placeholder).
         :param kwargs: Additional keyword arguments for Labscript device initialization.
@@ -56,6 +67,12 @@ class CAEN(IntermediateDevice):
         self.bipol = bipol
         self.ramp_up = ramp_up
         self.ramp_down = ramp_down
+        self.timeout = timeout
+        self.threshold = threshold
+        self.ch_num = ch_num
+        self.decay_time = decay_time
+        self.output_voltage = output_voltage
+
         if port is not None:
             self.BLACS_connection = '%s,%s' % (port, baud_rate)
         else:

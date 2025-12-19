@@ -61,25 +61,28 @@ class CAENWorker(Worker):
         self.worker_thread = threading.Thread(target=self._setting_loop, daemon=True)
         self.worker_thread.start()
 
+        self.failed_set = False
+        self.failed_channels = []
+
     def configure_device(self):
         """
-        1. Enable all channels
+        1. Enable channels/disable channels
         2. Check status
         3. Set ramp rates for all channels
         4. Monitor control mode and board serial number
         """
-        for ch in range(8):
-            self.caen.enable_channel(ch, True)
+        for ch, status in self.channels_status.items():
+            self.caen.enable_channel(ch, status)
 
         print("#################### CH STATUS #####################")
-        for ch in range(8):
+        for ch in range(self.ch_num):
             status = self.caen.get_status(channel=ch)
             status_dec_str = self._decode_status(ch, int(status))
             print(status_dec_str)
         print("#####################################################")
 
-        self.caen.set_ramp_up_rate(channel=8, rate=self.ramp_up)
-        self.caen.set_ramp_down_rate(channel=8, rate=self.ramp_down)
+        self.caen.set_ramp_up_rate(channel=self.ch_num, rate=self.ramp_up)
+        self.caen.set_ramp_down_rate(channel=self.ch_num, rate=self.ramp_down)
 
         print("Control mode : ", self.caen.monitor_control_mode())
         print("Board serial number : ", self.caen.read_board_serial())
@@ -102,7 +105,7 @@ class CAENWorker(Worker):
 
     def check_remote_values(self):
         results = {}
-        for i in range(8):
+        for i in range(self.ch_num):
             ch_name = f'CH {i}'
             actual = self.caen.monitor_voltage(i)
             results[ch_name] = actual
@@ -157,10 +160,10 @@ class CAENWorker(Worker):
             event_time, voltages = item
             try:
                 self._apply_event(event_time, voltages, self.start_time)
-                self._block_until_set(voltages)
+                self._block_until_set(voltages, self.timeout, self.threshold)
 
-            except Exception as e:
-                logger.error("Error by setting voltages to CAEN", e)
+            except Exception:
+                raise
             finally:
                 self.job_queue.task_done()
 
@@ -174,27 +177,19 @@ class CAENWorker(Worker):
                 elapsed = time.perf_counter() - (start_time or 0)
                 print(f"[{elapsed:.3f}s] ch{channel} = {voltage}")
 
-    def _block_until_set(self, voltages, timeout=100):
+    def _block_until_set(self, voltages, timeout, threshold):
         """
         Block execution until all requested channel voltages are settled or a timeout occurs.
 
         This method continuously monitors the voltage of each specified channel and compares
         it to the requested target value. A channel is considered "settled" when the absolute
         difference between the monitored voltage and the target voltage is within a fixed
-        tolerance (`delta = 1.0`). The method polls the device every 0.1 seconds.
-
-        If all channels settle before the timeout expires, exits early and reports
-        success. If the timeout is reached before all channels settle, the method records the
-        failure, reports which channels failed to reach their targets, and returns see
-        detailed failure information.
+        `threshold`. The method polls the device every 0.01 seconds.
 
         Parameters
         ----------
         voltages : Dict of channel numbers to target voltages.
-        timeout : int, optional
-        Maximum number of polling iterations to wait before timing out.
-        Each iteration waits 0.1 seconds, so the total wait time is approximately
-        `timeout * 0.1` seconds. Default is 100 (=10 seconds).
+        timeout : int, optional (seconds)
 
         Returns
         -------
@@ -204,39 +199,45 @@ class CAENWorker(Worker):
             Returns an empty list if all channels successfully settled.
         """
 
-        delta = 1.0
         settled = set()
         failed = []
+        start = time.monotonic()
+        poll_dt = 0.01
 
-        for _ in range(timeout):
+        while True:
             for ch, target in voltages.items():
                 if ch in settled:
                     continue
 
                 mon = self.caen.monitor_voltage(ch)
-                if abs(mon - abs(target)) < delta:
+                if abs(mon - abs(target)) <= threshold:
                     settled.add(ch)
 
             if len(settled) == len(voltages):
+                self.failed_channels = []
+                rich_print(" ---- All channels settled ---- ", color=GREEN)
+
+            if time.monotonic() - start >= timeout:
                 break
-            time.sleep(0.1)
 
-        # After timeout, check which channels failed
-        if len(settled) < len(voltages):
-            self.failed_set = True
+            time.sleep(poll_dt)
 
-            for ch, target in voltages.items():
-                if ch not in settled:
-                    mon = self.caen.monitor_voltage(ch)
-                    failed.append((ch, target, mon))
-                    rich_print(
-                        f"Failed to set {target} on ch{ch}. Current voltage={mon}",
-                        color=ORANGE
-                    )
-        else:
-            rich_print(" ---- All channels settled ---- ", color=GREEN)
+        # timeout reached --> collect failures
+        self.failed_set = True
 
-        return failed
+        for ch, target in voltages.items():
+            if ch not in settled:
+                mon = self.caen.monitor_voltage(ch)
+                failed.append((ch, target, mon))
+
+        self.failed_channels = failed
+        raise LabscriptError(
+             f"Failed to set voltages on {self.device_name}:\n" +
+            "\n".join(
+                f"ch{ch}: target={t}, actual={m}"
+                for ch, t, m in failed
+            )
+        )
 
     def _get_channel_num(self, channel: str) -> int:
         ch_lower = channel.lower()
@@ -259,8 +260,6 @@ class CAENWorker(Worker):
         else:
             raise ValueError(f"Unexpected channel name format: '{channel}'")
 
-        return channel_num
-
     def _decode_status(self, ch:int, st:int) -> str:
         status = f"Channel {ch}: "
         # print(f"[DEBUG]: status: {repr(bits16)}, {bits16}")
@@ -282,7 +281,16 @@ class CAENWorker(Worker):
         to the shot h5 file as results. 
         Runs at the end of the shot."""
         rich_print(f"---------- Begin transition to Manual: ----------", color=BLUE)
-        # todo: if settling during transition-to-buffered failed, write it in hdf5
+        if self.failed_set:
+            with h5py.File(self.h5file, 'r+') as hdf5_file:
+                group = hdf5_file['devices'][self.device_name]
+                group.attrs['failed_set'] = self.failed_set
+                group.attrs['failed_channels'] = self.failed_channels
+
+        self.failed_set = None
+        self.failed_channels = None
+        self.start_time = None
+
         return True
 
     def abort_transition_to_buffered(self):
