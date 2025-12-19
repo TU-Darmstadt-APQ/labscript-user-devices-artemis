@@ -6,7 +6,7 @@ from labscript import start, stop, add_time_marker, AnalogOut, DigitalOut, Clock
 from labscriptlib.example_apparatus import *
 
 from user_devices.UM.labscript_devices import UM
-from user_devices.CAEN_R8034.labscript_devices import CAEN
+from user_devices.CAEN_R8034.labscript_devices import CAEN, CaenAnalogOut
 from user_devices.BS_cryo_old.models.BS_1_10 import BS_1_10
 from user_devices.BS_cryo_old.models.BS_1_8 import BS_1_8
 from user_devices.Stahl_HV.labscript_devices import Stahl_HV, AnalogOutStahl
@@ -58,47 +58,57 @@ def init_CAEN_bipol(clockline):
     CAEN(
         name='CAEN_bipol',
         parent_device=clockline,
-        port='/dev/pts/2',
+        port='/dev/pts/3',
         # vid="21e1",
         # pid="0014",
         baud_rate=9600,
         bipol=True,
         ramp_up=50,
         ramp_down=50,
+        timeout=10,
+        threshold=1,
+        decay_time=None,
+        ch_num=8,
+        output_voltage=6000,
         # serial_number="63825",
-        # start_order=-1
+        start_order=-1
     )
-    # AnalogOut(name='caen_0', parent_device=CAEN_bipol, connection='ch 0')
-    # AnalogOut(name='caen_1', parent_device=CAEN_bipol, connection='ch 1')
-    AnalogOut(name='caen_2', parent_device=CAEN_bipol, connection='ch 2')
-    AnalogOut(name='caen_3', parent_device=CAEN_bipol, connection='ch 3')
-    AnalogOut(name='caen_4', parent_device=CAEN_bipol, connection='ch 4')
-    AnalogOut(name='caen_5', parent_device=CAEN_bipol, connection='ch 5')
-    AnalogOut(name='caen_6', parent_device=CAEN_bipol, connection='ch 6')
-    AnalogOut(name='caen_7', parent_device=CAEN_bipol, connection='ch 7')
+    # CaenAnalogOut(name='caen_0', parent_device=CAEN_bipol, connection='ch 0', enable=False)
+    # CaenAnalogOut(name='caen_1', parent_device=CAEN_bipol, connection='ch 1', enable=False)
+    CaenAnalogOut(name='caen_2', parent_device=CAEN_bipol, connection='ch 2', enable=True)
+    CaenAnalogOut(name='caen_3', parent_device=CAEN_bipol, connection='ch 3', enable=True)
+    CaenAnalogOut(name='caen_4', parent_device=CAEN_bipol, connection='ch 4', enable=True)
+    CaenAnalogOut(name='caen_5', parent_device=CAEN_bipol, connection='ch 5', enable=True)
+    CaenAnalogOut(name='caen_6', parent_device=CAEN_bipol, connection='ch 6', enable=True)
+    CaenAnalogOut(name='caen_7', parent_device=CAEN_bipol, connection='ch 7', enable=True)
 
 def init_CAEN_sikler_lenses(clockline):
     CAEN(
         name='CAEN_sikler_lenses',
         parent_device=clockline,
-        port='/dev/pts/4',
+        port='/dev/pts/2',
         # vid="21e1",
         # pid="0014",
         baud_rate=9600,
         bipol=False,
         ramp_up=10,
         ramp_down=10,
+        timeout=10,
+        threshold=1,
+        decay_time=None,
+        ch_num=8,
+        output_voltage=6000,
         # serial_number="13469",
         start_order=-1
     )
-    AnalogOut(name='sikler1_north', parent_device=CAEN_sikler_lenses, connection='ch 0')
-    AnalogOut(name='sikler1_south', parent_device=CAEN_sikler_lenses, connection='ch 1')
-    AnalogOut(name='sikler1_east', parent_device=CAEN_sikler_lenses, connection='ch 2')
-    AnalogOut(name='sikler1_west', parent_device=CAEN_sikler_lenses, connection='ch 3')
-    AnalogOut(name='sikler2_north', parent_device=CAEN_sikler_lenses, connection='ch 4')
-    AnalogOut(name='sikler2_south', parent_device=CAEN_sikler_lenses, connection='ch 5')
-    AnalogOut(name='sikler2_east', parent_device=CAEN_sikler_lenses, connection='ch 6')
-    AnalogOut(name='sikler2_west', parent_device=CAEN_sikler_lenses, connection='ch 7')
+    CaenAnalogOut(name='sikler1_north', parent_device=CAEN_sikler_lenses, connection='ch 0', enable=True)
+    CaenAnalogOut(name='sikler1_south', parent_device=CAEN_sikler_lenses, connection='ch 1', enable=True)
+    CaenAnalogOut(name='sikler1_east', parent_device=CAEN_sikler_lenses, connection='ch 2', enable=True)
+    CaenAnalogOut(name='sikler1_west', parent_device=CAEN_sikler_lenses, connection='ch 3', enable=True)
+    CaenAnalogOut(name='sikler2_north', parent_device=CAEN_sikler_lenses, connection='ch 4', enable=False)
+    CaenAnalogOut(name='sikler2_south', parent_device=CAEN_sikler_lenses, connection='ch 5', enable=False)
+    CaenAnalogOut(name='sikler2_east', parent_device=CAEN_sikler_lenses, connection='ch 6', enable=False)
+    CaenAnalogOut(name='sikler2_west', parent_device=CAEN_sikler_lenses, connection='ch 7', enable=False)
 
 
 def init_picoscope_178():
