@@ -51,8 +51,9 @@ def test_serial():
             elif MON_CH_VOL.match(command):
                 response = "#CMD:OK,VAL:2000.0\r\n"
             elif MON_CH_STATUS.match(command):
-                statuses = ["04096", "04112", "00001", "04096"]
-                status = random.choice(statuses)
+                statuses = ["04096", "04112", "00001", "00001", "00001", "00001", "00001", "00001", "00001", "00001", "00001" ]
+                # status = random.choice(statuses)
+                status = "00001"
                 response = f"#CMD:OK,VAL:{status}\r\n"
             elif MON_BD_SNUM.match(command):
                 response = random.choice(["#CMD:OK,VAL:12000\r\n", "#CMD:OK,VAL:24200\r\n"])

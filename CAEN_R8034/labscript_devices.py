@@ -42,17 +42,19 @@ class CAEN(IntermediateDevice):
         :param serial_number: str, optional
             Device serial number (PID) printed on the back panel. Required if connecting via PID:VID.
         :param bipol: bool, optional
-            Set to True for bipolar configuration (4 positive + 4 negative channels). Defaults to False.
+            Set to True for bipolar configuration (e.g. 4 positive + 4 negative channels). Defaults to False (all positive).
         :param parent_device: Labscript device, optional
             The clockline of the pseudoclock. Example: `DummyPseudoclock('pseudoclock'); clockline = pseudoclock.clockline`.
         :param ramp_up: int, optional
             Maximum voltage increase rate in V/s. Defaults to 10 V/s.
         :param ramp_down: int, optional
             Maximum voltage decrease rate in V/s. Defaults to 10 V/s.
-        :param timeout: int
-            Maximum time to wait for all channels to settle, in seconds.
         :param threshold: int, float
             Allowed absolute voltage deviation to consider a channel settled
+        :param timeout: int, optional
+            Maximum time in seconds to wait for all channels to settle. Non-deterministic settling (device is polled repeatedly)
+        :param decay_time: float, optional
+             Fixed time in seconds. Deterministic settling (waits calculated wait time)
         :param connection: str, optional
             Connection string for the device (not used, placeholder).
         :param kwargs: Additional keyword arguments for Labscript device initialization.
@@ -61,6 +63,9 @@ class CAEN(IntermediateDevice):
         -----
         - Either `port` or `vid`+`pid`+`serial_number` must be provided to establish communication.
         - `bipol` determines the channel polarity tab layout
+        - After setting a voltage, the device needs time to reach and stabilize at the target value. Either `timeout` or `decay_time` must be provided.
+        - Do not set both decay_time and timeout
+        - Do not set neither decay_time nor timeout
         """
         IntermediateDevice.__init__(self, name, parent_device, **kwargs)
         self.serial_number = serial_number
