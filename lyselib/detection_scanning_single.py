@@ -1,3 +1,13 @@
+"""
+This file provides a GUI-based visualization for a single-shot scanning process.
+It reads the experiment HDF5 file, extracts picoscope traces, camera images, and shot status (camera or power supply failures).
+
+- Plot picoscope traces with trigger markers.
+- Display camera images captured during the shot.
+- Display the status of the shot, including camera failures and power supply failures.
+"""
+
+import numpy as np
 import pyqtgraph as pg
 from qtutils.qt import QtWidgets, QtGui, QtCore
 from pylab import *
@@ -121,7 +131,17 @@ class ShotReader:
             if not attrs.get("failed_set", False):
                 continue
 
-            for ch, desired, actual in attrs.get("failed_channels", []):
+            for ch, desired, actual in attrs.get("soft_failed_channels", []):
+                status.supply_failures.append(
+                    SupplyFailure(
+                        device=dev_name,
+                        channel=int(ch),
+                        desired=float(desired),
+                        actual=float(actual),
+                    )
+                )
+
+            for ch, desired, actual in attrs.get("hard_failed_channels", []):
                 status.supply_failures.append(
                     SupplyFailure(
                         device=dev_name,
@@ -212,7 +232,7 @@ class StatusWindow(QtWidgets.QWidget):
             lines.append("")
 
         if status.supply_failures:
-            lines.append("Power supply failures:")
+            lines.append("Power supply failures (target -> monitored):")
             for f in status.supply_failures:
                 lines.append(
                     f"  - {f.device} ch {f.channel}: "
