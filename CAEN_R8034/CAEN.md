@@ -74,20 +74,15 @@ To achieve this, the CAEN device should be initialized first by setting `start_o
 Two settling strategies are supported: deterministic and non-deterministic.
 
 ### Deterministic strategy
-The device waits for a fixed settling time calculated in [_calculate_settling_time](BLACS_workers.py).
+The device waits for a fixed settling time calculated in [_calculate_waiting_time](BLACS_workers.py).
 The calculation depends on:
 - ramp rate,
 - decay time,
-- ramp step size,
-- ramp direction (downward ramps are usually slower).
+- ramp step size.
 
 To use this strategy:
-- `decay_time` must be defined,
+- `decay_time` must be defined (must be determined experimentally beforehand)
 - `timeout` must be set to `None`.
-
-The `decay_time` should be measured beforehand.
-After waiting, the settled voltages are validated by comparing the target values with the monitored voltages.
-If the difference exceeds the allowed threshold, a LabscriptError is raised and the shot sequence execution is stopped.
 
 ### Non-Deterministic strategy
 In this mode, the device is polled in a loop until either:
@@ -98,8 +93,23 @@ To use this strategy:
 - `timeout` must be defined,
 - `decay_time` must be set to None.
 
-If the timeout is exceeded while some channels are still unsettled, a LabscriptError is raised and the shot sequence execution is stopped.
+###  Voltage Settling and Validation 
 
+After applying voltages and waiting the calculated settling time (deterministic) or after the timeout (non-deterministic), the monitored voltages are compared to the target voltages.
+
+- If the absolute difference exceeds the defined threshold
+and the voltages to be set above the soft limit (~50V),
+a LabscriptError is raised, stopping the shot sequence.
+- If the absolute difference exceeds the threshold but both 
+the target and monitored voltages are below the soft limit (~50V), 
+the deviation is logged to the console and saved in the experiment file, 
+but execution continues without raising an exception.
+
+**Note**: Voltages below approximately 50V are not guaranteed 
+due to the minimum controllable voltage of the device, 
+which ranges from ~30V to ~50V depending on the channel. 
+To achieve a true 0V output, the channel must be explicitly disabled.
+ 
 ---
 
 ## Usage

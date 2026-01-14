@@ -1,6 +1,4 @@
 import queue
-
-from anyio import wait_readable
 from blacs.tab_base_classes import Worker
 from labscript import LabscriptError
 import h5py
@@ -44,20 +42,16 @@ class CAENWorker(Worker):
         self.worker_thread.start()
 
         self.failed_set = False
-        self.failed_channels = []
+        self.soft_fails = []
+        self.hard_fails = []
+        self.SOFT_LIMIT = 50.0  # volts
+        # Below a voltage of about 50 V, the setting is not guaranteed. Therefore, if the monitored and desired values are both below 50 V, we report the error but do not throw the exception.
 
         has_timeout = self.timeout is not None      # polling
         has_decay = self.decay_time is not None     # waiting
         if has_timeout == has_decay:
             raise LabscriptError("Define exactly one of `timeout` or `decay_time`.")
         self.deterministic = has_decay
-        if has_decay:
-            self.setup_delay_params = {
-                'base_delay': self.decay_time,
-                'min_delay': 0.01,
-                'max_delay': 0.5,
-                'down_multiplier': 1.5,
-            }
 
     def configure_device(self):
         """
@@ -77,6 +71,7 @@ class CAENWorker(Worker):
             print(status_dec_str)
         print("#########################################################")
 
+        # Set the same ramp rate for all channels
         self.caen.set_ramp_up_rate(channel=self.ch_num, rate=self.ramp_up)
         self.caen.set_ramp_down_rate(channel=self.ch_num, rate=self.ramp_down)
 
@@ -142,8 +137,8 @@ class CAENWorker(Worker):
 
 
         if self.deterministic:
-            wait_time = self._calculate_settling_time(target_voltages)
-            rich_print(f"Deterministic wait time: {wait_time*1000:.1f} ms", color=ORANGE)
+            wait_time = self._calculate_waiting_time(target_voltages, decay_time=self.decay_time, tolerance=1)
+            rich_print(f"Deterministic wait time: {wait_time:.1f} s", color=ORANGE)
             job_data = {
                 "voltages": target_voltages,
                 "wait_time": wait_time,
@@ -167,7 +162,19 @@ class CAENWorker(Worker):
 
 
     def _setting_loop(self):
-        """Process job in a separate thread."""
+        """Process jobs in a separate thread.
+
+          Depending on the timing strategy:
+            - Deterministic: strictly wait (sleep) until all voltages are set.
+            - Non-deterministic: actively poll the device until the timeout is exceeded or all channels are set.
+
+          After applying voltages and waiting or polling, the voltages are validated.
+          Depending on the target and monitored voltages, errors are either reported (soft)
+          or raise exceptions (hard).
+
+          Soft errors: voltages under SOFT_LIMIT. Report only, sequence continues.
+          Hard errors: voltage deviations above SOFT_LIMIT. Raise LabscriptError, sequence stops.
+          """
         while True:
             item = self.job_queue.get()
             if item is None:
@@ -179,67 +186,113 @@ class CAENWorker(Worker):
 
                 if self.deterministic:
                     time.sleep(item['wait_time'])
-                    self._validate_settling(item['voltages'])
                 else:
                     self._block_until_set(item["voltages"], self.timeout, self.threshold)
 
+                self._validate_settling(item['voltages'])
+
             except Exception as e:
-                rich_print(f"Error in _setting_loop: {e}", color=RED)
+                rich_print(f"Error while setting the voltages: {e}", color=RED)
                 raise
             finally:
                 self.job_queue.task_done()
 
     def _apply_all_voltages(self, voltages, start_time):
+        """Apply voltages to all enabled channels.
+
+          Steps:
+          1. Check if the channel is settable (ON and not disabled). If not, raise LabscriptError.
+          2. Set the voltage on the hardware for all enabled channels.
+          3. Print the elapsed time relative to start_time for debugging.
+
+          :param voltages: (dict) Channel number to target voltage mapping.
+          :param start_time: (float) Reference timestamp for logging elapsed time.
+          """
         for channel, voltage in voltages.items():
-            self.caen.set_voltage(channel, voltage)
-            if not self._check_channel_state(channel): # channel is not settable
+            if not self._check_channel_state(channel):  # channel is not settable
                 raise LabscriptError(f" {self.device_name}: ch{channel} is OFF or/and disabled. Cannot set voltage={voltage}.")
             else:
+                self.caen.set_voltage(channel, voltage)
                 elapsed = time.perf_counter() - (start_time or 0)
                 print(f"[{elapsed:.3f}s] ch{channel} = {voltage}")
 
     def _validate_settling(self, target_voltages):
-        for ch, val in target_voltages.items():
-            mon = self.caen.monitor_voltage(ch)
-            if abs(mon - abs(val)) >= self.threshold:
-                self.failed_channels.append((ch, val, mon))
+        """Validate that the requested voltages have been reached within the defined threshold.
 
-        if len(self.failed_channels) > 0:
+          Soft errors:
+              - Voltages below SOFT_LIMIT (default 50 V)
+              - Reported in console; sequence continues.
+          Hard errors:
+              - Voltage deviations above SOFT_LIMIT
+              - Raise LabscriptError and stop the sequence.
+
+        :param target_voltages: (dict)  Dictionary of channel numbers and their target voltages. """
+        for ch, tar in target_voltages.items():
+            mon = self.caen.monitor_voltage(ch)
+            if abs(mon - abs(tar)) >= self.threshold:
+                if abs(tar) < self.SOFT_LIMIT and mon < self.SOFT_LIMIT:
+                    self.soft_fails.append((ch, tar, mon))
+                else:
+                    self.hard_fails.append((ch, tar, mon))
+
+        if self.soft_fails:
             self.failed_set = True
+            rich_print(
+                "Voltage deviation (soft limit exceeded):\n" +
+                "\n".join(
+                    f"ch{ch}: target={t}, actual={m}"
+                    for ch, t, m in self.soft_fails
+                ),
+                color=ORANGE
+            )
+
+        if self.hard_fails:
+            self.failed_set = True
+            self.failed_channels = self.hard_fails
             raise LabscriptError(
                 f"Failed to set voltages on {self.device_name}:\n" +
                 "\n".join(
                     f"ch{ch}: target={t}, actual={m}"
-                    for ch, t, m in self.failed_channels
+                    for ch, t, m in self.hard_fails
                 )
             )
 
-    def _calculate_settling_time(self, target_voltages):
+    def _calculate_waiting_time(self, target_voltages, decay_time, tolerance):
+        """
+        Calculate the total waiting time for deterministic voltage setting.
+
+        This includes:
+          1. Ramp time based on the largest voltage step and ramp rates.
+          2. Exponential settling time based on a decay constant (τ) and tolerance.
+
+
+        :param target_voltages : (dict) Dictionary of channel numbers to target voltages.
+        :param decay_time : (float) Constant decay time (τ) in seconds for the voltage settling. (experimentally measured)
+        :param tolerance : (float) Acceptable percentage deviation from target voltage (1-100%).
+
+        :return Total time to wait (seconds) to ensure voltages have settled.
+
+        """
+        # 1. Calculate ramp time (in seconds) for the maximum step
         current_voltages = self.current_voltages
-        max_wait = self.setup_delay_params['min_delay']
         rate_up = self.ramp_up
         rate_down = self.ramp_down
-        base_delay = self.setup_delay_params['base_delay']
+        max_step = 0
 
         for ch, target_v in target_voltages.items():
-            prev_v = current_voltages.get(ch, 0)
-            delta_v = abs(target_v - prev_v)
-            if target_v > prev_v:           # ramp up
-                t_ramp = delta_v / rate_up
-            else:                           # ramp down
-                t_ramp = delta_v / rate_down
+            if abs(max_step) < abs(target_v - current_voltages.get(ch)):
+                max_step = target_v - current_voltages.get(ch)
 
-            t_settle = (base_delay + t_ramp)
-            if target_v < prev_v:           # ramping down usually takes longer
-                t_settle *= self.setup_delay_params['down_multiplier']
+        if max_step > 0:
+            ramp_time = np.ceil(abs(max_step) / rate_up)
+        else:
+            ramp_time = np.ceil(abs(max_step) / rate_down)
 
-            t_settle = max(t_settle, self.setup_delay_params['min_delay'])
-            t_settle = min(t_settle, self.setup_delay_params['max_delay'])
+        # 2. add experimentally measured settling time
+        # assuming exponential settling: exp(-t/τ) < tolerance/100
+        settling_time = decay_time * np.log(100/tolerance)
 
-            if t_settle > max_wait:
-                max_wait = t_settle
-
-        return max_wait
+        return ramp_time + settling_time
 
     def _block_until_set(self, voltages, timeout, threshold):
         """
@@ -251,21 +304,12 @@ class CAENWorker(Worker):
         difference between the monitored voltage and the target voltage is within a fixed
         `threshold`. The method polls the device every 0.01 seconds.
 
-        Parameters
-        ----------
-        voltages : Dict of channel numbers to target voltages.
-        timeout : int, optional (seconds)
-
-        Returns
-        -------
-        list[tuple[int, float, float]]
-            A list of failures in the form `(channel, target_voltage, monitored_voltage)`
-            for each channel that did not settle within the timeout.
-            Returns an empty list if all channels successfully settled.
+        :param voltages : Dict of channel numbers to target voltages.
+        :param timeout : int, optional (seconds)
+        :param threshold :
         """
 
         settled = set()
-        failed = []
         start = time.monotonic()
         poll_dt = 0.01
 
@@ -280,23 +324,11 @@ class CAENWorker(Worker):
 
             if len(settled) == len(voltages): # all channels are settled
                 rich_print(" ---- All channels settled ---- ", color=GREEN)
-                break
+                break # SUCCESS
 
             if time.monotonic() - start >= timeout:  # timeout reached --> collect failures and raise Exception
                 self.failed_set = True
-                for ch, target in voltages.items():
-                    if ch not in settled:
-                        mon = self.caen.monitor_voltage(ch)
-                        failed.append((ch, target, mon))
-
-                self.failed_channels = failed
-                raise LabscriptError(
-                    f"Failed to set voltages on {self.device_name}. Timeout {timeout} exceeded :\n" +
-                    "\n".join(
-                        f"ch{ch}: target={t}, actual={m}"
-                        for ch, t, m in failed
-                    )
-                )
+                return
 
             time.sleep(poll_dt)
 
@@ -346,10 +378,14 @@ class CAENWorker(Worker):
             with h5py.File(self.h5file, 'r+') as hdf5_file:
                 group = hdf5_file['devices'][self.device_name]
                 group.attrs['failed_set'] = self.failed_set
-                group.attrs['failed_channels'] = self.failed_channels
+                if self.soft_fails:
+                    group.attrs['soft_failed_channels'] = self.soft_fails
+                if self.hard_fails:
+                    group.attrs['hard_failed_channels'] = self.hard_fails
 
+        self.soft_fails = []
+        self.hard_fails = []
         self.failed_set = False
-        self.failed_channels = []
 
         return True
 

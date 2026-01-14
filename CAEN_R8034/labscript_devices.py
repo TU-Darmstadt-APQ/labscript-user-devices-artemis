@@ -54,7 +54,7 @@ class CAEN(IntermediateDevice):
         :param timeout: int, optional
             Maximum time in seconds to wait for all channels to settle. Non-deterministic settling (device is polled repeatedly)
         :param decay_time: float, optional
-             Fixed time in seconds. Deterministic settling (waits calculated wait time)
+             Characteristic decay time (τ) in seconds. Time required for the voltage error to decrease to 1/e from its initial value.
         :param connection: str, optional
             Connection string for the device (not used, placeholder).
         :param kwargs: Additional keyword arguments for Labscript device initialization.
