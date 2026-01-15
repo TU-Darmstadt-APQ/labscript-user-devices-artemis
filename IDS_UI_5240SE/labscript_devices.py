@@ -14,7 +14,7 @@ class TriggerEdgeType(str, Enum):
     HIGH = "LevelHigh"
     LOW = "LevelLow"
 
-class VisibilityLevelType(str, Enum):
+class IDSVisibilityLevelType(str, Enum):
     SIMPLE = 0 # Beginner
     INTERMEDIATE = 1 # Expert
     ADVANCED = 2 # Guru
@@ -42,7 +42,7 @@ class IDS_UICamera(TriggerableDevice):
         }
     )
     def __init__(self, name, trigger_activation_type:TriggerEdgeType=TriggerEdgeType.FALLING, serial_number=None, connection=None, parent_device=None, parentless=True,
-                 exposure_time=None, frame_rate_fps=None, gain=None, roi=None, visibility_level: VisibilityLevelType=VisibilityLevelType.SIMPLE,
+                 exposure_time=None, frame_rate_fps=None, gain=None, roi=None, visibility_level: IDSVisibilityLevelType=IDSVisibilityLevelType.SIMPLE,
                  acquisition_timeout=None, orientation=None, exception_on_failed_shot=True, trigger_delay=0.0, **kwargs):
         """
 
@@ -80,7 +80,7 @@ class IDS_UICamera(TriggerableDevice):
 
         self.camera_attributes = {}
         if exposure_time is not None:
-            self.camera_attributes['exposure_time_ms'] = exposure_time
+            self.camera_attributes['exposure_time'] = exposure_time
         if frame_rate_fps is not None:
             self.camera_attributes['frame_rate_fps'] = frame_rate_fps
         if gain is not None:

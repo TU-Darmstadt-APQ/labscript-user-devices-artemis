@@ -15,9 +15,9 @@ from labscript_utils.shared_drive import path_to_local
 from labscript_utils.properties import set_attributes
 from labscript_devices.IMAQdxCamera.blacs_workers import IMAQdxCameraWorker
 
-from ids_peak import ids_peak
-from ids_peak_ipl import ids_peak_ipl
-from ids_peak import ids_peak_ipl_extension
+# from ids_peak import ids_peak
+# from ids_peak_ipl import ids_peak_ipl
+# from ids_peak import ids_peak_ipl_extension
 from datetime import datetime as dt
 
 import os
@@ -27,8 +27,13 @@ RED = '#FF6347'
 YELLOW = '#E6DB74'
 GREEN = '#A6E22E'
 
+ids_peak = None
+ids_peak_ipl = None
+ids_peak_ipl_extension = None
+
 class IDS_Camera(object):
     def __init__(self, serial_number=None):
+        self._import_python_libraries()
         # Initialize the library
         ids_peak.Library.Initialize()
         self.device_manager = ids_peak.DeviceManager.Instance()
@@ -83,6 +88,21 @@ class IDS_Camera(object):
 
         self.exception_on_failed_shot = True
 
+    def _import_python_libraries(self):
+        global ids_peak, ids_peak_ipl, ids_peak_ipl_extension
+        try:
+            from ids_peak import ids_peak as _ids_peak
+            from ids_peak_ipl import ids_peak_ipl as _ids_peak_ipl
+            from ids_peak import ids_peak_ipl_extension as _ids_peak_ipl_extension
+        except ImportError as e:
+            raise ImportError(
+                "ids_peak / ids_peak_ipl not installed on this system"
+            ) from e
+
+        ids_peak = _ids_peak
+        ids_peak_ipl = _ids_peak_ipl
+        ids_peak_ipl_extension = _ids_peak_ipl_extension
+
     def set_attributes(self, attr_dict):
         for k, v in attr_dict.items():
             self.set_attribute(k, v)
@@ -97,7 +117,7 @@ class IDS_Camera(object):
         """Set the value of the attribute of the given name to the given value"""
         _value = value  # Keep the original for the sake of the error message
         try:
-            if name == 'exposure_time_ms':
+            if name == 'exposure_time':
                 self.set_exposure_time(value * 1e+6) # s -> us
             if name == 'gain':
                 self.set_gain(value)
