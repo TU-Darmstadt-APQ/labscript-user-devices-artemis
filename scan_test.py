@@ -12,7 +12,7 @@ build_connectiontable()
 
 t = 0
 
-add_time_marker(t, "start_initialization_test", verbose=True)
+add_time_marker(t, "start_scan_iteration", verbose=True)
 start()
 
 # IDSCameraUI5240SE.expose("ion_detect", "ions")
@@ -94,6 +94,6 @@ caen_7.constant(t=t, value=caen_7_v)
 # t += 1
 # ao0_bs_norm.constant(t=t, value=15)
 
-t = t + 0.0001
+t = t + 0.00001
 stop(t)
 

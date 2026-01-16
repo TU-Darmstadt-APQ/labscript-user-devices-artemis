@@ -16,15 +16,19 @@ from labscript_devices.BS_Series.models.BS_341A import BS_341A
 
 from user_devices.BNC_575.labscript_devices import BNC_575, PulseChannel
 
-from user_devices.IDS_UI_5240SE.labscript_devices import IDS_UICamera, VisibilityLevelType, TriggerEdgeType
+from user_devices.IDS_UI_5240SE.labscript_devices import IDS_UICamera, IDSVisibilityLevelType, TriggerEdgeType
 
 from user_devices.PicoScope4000A.labscript_devices import PicoScope4000A, PicoAnalogIn
-# from user_devices.AlliedVision.labscript_devices import AlviumCamera
+from user_devices.AlliedVision.labscript_devices import AlviumCamera, TriggerActivationType, AVVisibilityLevelType
 
 from user_devices.logger_config import logger
 
 def init_alvium():
-    AlviumCamera(name='AlliedVision', serial_number="0C9X6")
+    # camera_trigger = Trigger(name='camera_trigger', parent_device=pci_6259, connection='port0/line0')
+    camera_trigger = None
+    AlviumCamera(name='allied_vision', camera_id="0C9X6", parent_device=camera_trigger,  parentless=True, connection='trigger',
+                 trigger_gpio=0, gain=10, exposure_time=0.005, framerate=10, manual_mode_gain=10, manual_mode_exposure_time=0.05,
+                 orientation=None, trigger_activation=TriggerActivationType.FALLING_EDGE, visibility_level=AVVisibilityLevelType.EXPERT, stop_acquisition_timeout=5.0)
 
 def init_BS_10(clockline):
     BS_cryo(name="BS_cryo_10CH", parent_device=clockline, ao_range=10, num_ao=10, port='/dev/pts/1', pre_programmed=False)
@@ -58,16 +62,16 @@ def init_CAEN_bipol(clockline):
     CAEN(
         name='CAEN_bipol',
         parent_device=clockline,
-        port='/dev/pts/3',
+        port='/dev/pts/1',
         # vid="21e1",
         # pid="0014",
         baud_rate=9600,
         bipol=True,
-        ramp_up=50,
-        ramp_down=50,
-        timeout=10,
-        threshold=1,
-        decay_time=None,
+        ramp_up=500,
+        ramp_down=500,
+        timeout=None,
+        threshold=6000,
+        decay_time=50*10e-3,
         ch_num=8,
         output_voltage=6000,
         # serial_number="63825",
@@ -86,15 +90,15 @@ def init_CAEN_sikler_lenses(clockline):
     CAEN(
         name='CAEN_sikler_lenses',
         parent_device=clockline,
-        port='/dev/pts/2',
+        port='/dev/pts/3',
         # vid="21e1",
         # pid="0014",
         baud_rate=9600,
         bipol=False,
-        ramp_up=10,
-        ramp_down=10,
+        ramp_up=500,
+        ramp_down=500,
         timeout=10,
-        threshold=1,
+        threshold=6000,
         decay_time=None,
         ch_num=8,
         output_voltage=6000,
@@ -158,7 +162,7 @@ def init_picoscope_173():
 #         camera_setting="Default")
 
 def init_IDS_UI():
-    IDS_UICamera(name='IDSCameraUI5240SE', serial_number="4104380609", visibility_level=VisibilityLevelType.ADVANCED,
+    IDS_UICamera(name='IDSCameraUI5240SE', serial_number="4104380609", visibility_level=IDSVisibilityLevelType.ADVANCED,
                  gain=3.5, exposure_time=0.05, roi=(0,0,1280,1024), frame_rate_fps=13,
                  acquisition_timeout=6)
 
@@ -231,6 +235,8 @@ def build_connectiontable():
     init_CAEN_bipol(clockline)
     init_CAEN_sikler_lenses(clockline)
 
+    # init_alvium()
+
     # init_picoscope_178()
     # init_picoscope_173()
 
@@ -245,7 +251,6 @@ def build_connectiontable():
     # init_HV_200_8(clockline)
     # init_BNC_575()
     # init_IDS(camera_trigger)
-    # init_alvium()
     # init_HV_200(clockline)
     # init_HV_250(clockline)
     # init_BS_10(clockline)
@@ -259,6 +264,7 @@ if __name__ == '__main__':
     t = 0
     add_time_marker(t, "Start", verbose=True)
     start()
+    # allied_vision.expose(t=t, name="ion_detect", frametype="ions", trigger_duration=0.001)
     t+=1
     # ch_1_250.constant(t=t, value=10)
 
