@@ -62,107 +62,120 @@ def init_CAEN_bipol(clockline):
     CAEN(
         name='CAEN_bipol',
         parent_device=clockline,
-        port='/dev/pts/1',
-        # vid="21e1",
-        # pid="0014",
+        # port='/dev/pts/1',
+        vid="21e1",
+        pid="0014",
         baud_rate=9600,
         bipol=True,
-        ramp_up=500,
-        ramp_down=500,
-        timeout=None,
+        ramp_up=10,
+        ramp_down=10,
+        timeout=10,
         threshold=6000,
-        decay_time=50*10e-3,
+        # decay_time=50*10e-3,
+        decay_time=None,
         ch_num=8,
         output_voltage=6000,
-        # serial_number="63825",
+        serial_number="63825",
         start_order=-1
     )
-    # CaenAnalogOut(name='caen_0', parent_device=CAEN_bipol, connection='ch 0', enable=False)
-    # CaenAnalogOut(name='caen_1', parent_device=CAEN_bipol, connection='ch 1', enable=False)
-    CaenAnalogOut(name='caen_2', parent_device=CAEN_bipol, connection='ch 2', enable=True)
-    CaenAnalogOut(name='caen_3', parent_device=CAEN_bipol, connection='ch 3', enable=True)
-    CaenAnalogOut(name='caen_4', parent_device=CAEN_bipol, connection='ch 4', enable=True)
-    CaenAnalogOut(name='caen_5', parent_device=CAEN_bipol, connection='ch 5', enable=True)
-    CaenAnalogOut(name='caen_6', parent_device=CAEN_bipol, connection='ch 6', enable=True)
-    CaenAnalogOut(name='caen_7', parent_device=CAEN_bipol, connection='ch 7', enable=True)
+    # Make sure channels are enabled
+    CaenAnalogOut(name='MCP_1', parent_device=CAEN_bipol, connection='ch 0', enable=True)
+    CaenAnalogOut(name='PDT', parent_device=CAEN_bipol, connection='ch 1', enable=True)
+    CaenAnalogOut(name='FC', parent_device=CAEN_bipol, connection='ch 2', enable=False)
+    CaenAnalogOut(name='CC', parent_device=CAEN_bipol, connection='ch 3', enable=False)
+    CaenAnalogOut(name='caen_4', parent_device=CAEN_bipol, connection='ch 4', enable=False)
+    CaenAnalogOut(name='caen_5', parent_device=CAEN_bipol, connection='ch 5', enable=False)
+    CaenAnalogOut(name='caen_6', parent_device=CAEN_bipol, connection='ch 6', enable=False)
+    CaenAnalogOut(name='caen_7', parent_device=CAEN_bipol, connection='ch 7', enable=False)
 
 def init_CAEN_sikler_lenses(clockline):
     CAEN(
         name='CAEN_sikler_lenses',
         parent_device=clockline,
-        port='/dev/pts/3',
-        # vid="21e1",
-        # pid="0014",
+        # port='/dev/pts/3',
+        vid="21e1",
+        pid="0014",
         baud_rate=9600,
         bipol=False,
-        ramp_up=500,
-        ramp_down=500,
+        ramp_up=50,
+        ramp_down=50,
         timeout=10,
-        threshold=6000,
+        threshold=10,
         decay_time=None,
         ch_num=8,
         output_voltage=6000,
-        # serial_number="13469",
+        serial_number="13469",
         start_order=-1
     )
+    # Make sure channels are enabled
     CaenAnalogOut(name='sikler1_north', parent_device=CAEN_sikler_lenses, connection='ch 0', enable=True)
     CaenAnalogOut(name='sikler1_south', parent_device=CAEN_sikler_lenses, connection='ch 1', enable=True)
     CaenAnalogOut(name='sikler1_east', parent_device=CAEN_sikler_lenses, connection='ch 2', enable=True)
     CaenAnalogOut(name='sikler1_west', parent_device=CAEN_sikler_lenses, connection='ch 3', enable=True)
-    CaenAnalogOut(name='sikler2_north', parent_device=CAEN_sikler_lenses, connection='ch 4', enable=False)
-    CaenAnalogOut(name='sikler2_south', parent_device=CAEN_sikler_lenses, connection='ch 5', enable=False)
-    CaenAnalogOut(name='sikler2_east', parent_device=CAEN_sikler_lenses, connection='ch 6', enable=False)
-    CaenAnalogOut(name='sikler2_west', parent_device=CAEN_sikler_lenses, connection='ch 7', enable=False)
+    CaenAnalogOut(name='sikler2_north', parent_device=CAEN_sikler_lenses, connection='ch 4', enable=True)
+    CaenAnalogOut(name='sikler2_south', parent_device=CAEN_sikler_lenses, connection='ch 5', enable=True)
+    CaenAnalogOut(name='sikler2_east', parent_device=CAEN_sikler_lenses, connection='ch 6', enable=True)
+    CaenAnalogOut(name='sikler2_west', parent_device=CAEN_sikler_lenses, connection='ch 7', enable=True)
 
 
 def init_picoscope_178():
     picoscope_178 = PicoScope4000A(name='picoscope_178',
                    serial_number='HO248/178',
+                    sampling_rate=1e7, no_post_trigger_samples=100000,
+                    source="channel_A", threshold=1.9, direction='falling', delay_samples=0,
+                    auto_trigger_s=0,
                    )
     # 8 channels
     # name, parent_device, connection, enabled=[0,1], coupling=['ac', 'dc'], analog_offset_v=[0.1..200], analog_offset_v=float
-    PicoAnalogIn(name='pico_0_178', parent_device=picoscope_178, connection='channel_A', enabled=1, coupling='dc', range_v=50, analog_offset_v=0.0)
-    PicoAnalogIn(name='pico_1_178', parent_device=picoscope_178, connection='channel_B', enabled=1, coupling='dc', range_v=50, analog_offset_v=0.0)
-    PicoAnalogIn(name='pico_2_178', parent_device=picoscope_178, connection='channel_C', enabled=1, coupling='ac', range_v=50, analog_offset_v=0.0)
-    PicoAnalogIn(name='pico_3_178', parent_device=picoscope_178, connection='channel_D', enabled=1, coupling='ac', range_v=50, analog_offset_v=0.0)
-    PicoAnalogIn(name='pico_4_178', parent_device=picoscope_178, connection='channel_E', enabled=1, coupling='ac', range_v=50, analog_offset_v=0.0)
-    PicoAnalogIn(name='pico_5_178', parent_device=picoscope_178, connection='channel_F', enabled=1, coupling='ac', range_v=50, analog_offset_v=0.0)
-    PicoAnalogIn(name='pico_6_178', parent_device=picoscope_178, connection='channel_G', enabled=1, coupling='ac', range_v=50, analog_offset_v=0.0)
-    PicoAnalogIn(name='pico_7_178', parent_device=picoscope_178, connection='channel_H', enabled=1, coupling='ac', range_v=50, analog_offset_v=0.0)
+    PicoAnalogIn(name='trigger_178', parent_device=picoscope_178, connection='channel_A', enabled=1, coupling='dc', range_v=5, analog_offset_v=0.0)
+    PicoAnalogIn(name='PDT_CC', parent_device=picoscope_178, connection='channel_B', enabled=1, coupling='dc', range_v=0.5, analog_offset_v=0.0)
+    PicoAnalogIn(name='FC', parent_device=picoscope_178, connection='channel_C', enabled=1, coupling='ac', range_v=1, analog_offset_v=0.0)
+    PicoAnalogIn(name='CC_single', parent_device=picoscope_178, connection='channel_D', enabled=1, coupling='ac', range_v=0.2, analog_offset_v=0.0)
+    PicoAnalogIn(name='CC2_e', parent_device=picoscope_178, connection='channel_E', enabled=1, coupling='ac', range_v=0.05, analog_offset_v=0.0)
+    PicoAnalogIn(name='CC2_f', parent_device=picoscope_178, connection='channel_F', enabled=1, coupling='ac', range_v=0.05, analog_offset_v=0.0)
+    PicoAnalogIn(name='CC2_g', parent_device=picoscope_178, connection='channel_G', enabled=1, coupling='ac', range_v=0.05, analog_offset_v=0.0)
+    PicoAnalogIn(name='CC2_h', parent_device=picoscope_178, connection='channel_H', enabled=1, coupling='ac', range_v=0.05, analog_offset_v=0.0)
 
-
-    picoscope_178.set_stream_sampling(sampling_rate=4e6, no_post_trigger_samples=10000)
-    picoscope_178.set_simple_trigger(source="channel_A", threshold=2.9, direction='falling', delay_samples=0,
-                                     auto_trigger_s=0)
+    #
+    # picoscope_178.set_stream_sampling(sampling_rate=1e7, no_post_trigger_samples=600)
+    # picoscope_178.set_simple_trigger(source="channel_A", threshold=1.9, direction='falling', delay_samples=0,
+    #                                  auto_trigger_s=0)
     # picoscope_178.signal_generator_config(offset_voltage=0, pk2pk=2, wave_type='square')
 
 def init_picoscope_173():
-    picoscope = PicoScope4000A(name='picoscope_173', serial_number='HO248/173')
+    picoscope = PicoScope4000A(name='picoscope_173', serial_number='HO248/173',
+                               sampling_rate=1e7, no_post_trigger_samples=100000,
+                               source="channel_A", threshold=1.9, direction='falling', delay_samples=0,
+                               auto_trigger_s=0,
+                               )
     # 8 channels
     # name, parent_device, connection, enabled=[0,1], coupling=['ac', 'dc'], analog_offset_v=[0.1..200], analog_offset_v=float
-    PicoAnalogIn(name='pico_0', parent_device=picoscope, connection='channel_A', enabled=1, coupling='dc', range_v=10, analog_offset_v=0.0)
-    PicoAnalogIn(name='pico_1', parent_device=picoscope, connection='channel_B', enabled=1, coupling='dc', range_v=10, analog_offset_v=0.0)
-    PicoAnalogIn(name='pico_2', parent_device=picoscope, connection='channel_C', enabled=1, coupling='ac', range_v=10, analog_offset_v=0.0)
-    PicoAnalogIn(name='pico_3', parent_device=picoscope, connection='channel_D', enabled=1, coupling='ac', range_v=10, analog_offset_v=0.0)
-    PicoAnalogIn(name='pico_4', parent_device=picoscope, connection='channel_E', enabled=1, coupling='ac', range_v=10, analog_offset_v=0.0)
-    PicoAnalogIn(name='pico_5', parent_device=picoscope, connection='channel_F', enabled=1, coupling='ac', range_v=10, analog_offset_v=0.0)
-    PicoAnalogIn(name='pico_6', parent_device=picoscope, connection='channel_G', enabled=1, coupling='ac', range_v=10, analog_offset_v=0.0)
-    PicoAnalogIn(name='pico_7', parent_device=picoscope, connection='channel_H', enabled=1, coupling='ac', range_v=10, analog_offset_v=0.0)
-
-    picoscope_173.set_stream_sampling(sampling_rate=4e6, no_post_trigger_samples=10000)
-    picoscope_173.set_simple_trigger(source="channel_A", threshold=2.9, direction='falling', delay_samples=0,
-                                     auto_trigger_s=0)
+    PicoAnalogIn(name='trigger_173', parent_device=picoscope, connection='channel_A', enabled=1, coupling='dc', range_v=5, analog_offset_v=0.0)
+    PicoAnalogIn(name='trap_electrode', parent_device=picoscope, connection='channel_B', enabled=1, coupling='dc', range_v=10, analog_offset_v=0.0)
+    PicoAnalogIn(name='mcp_1_c', parent_device=picoscope, connection='channel_C', enabled=1, coupling='ac', range_v=10, analog_offset_v=0.0)
+    PicoAnalogIn(name='mcp_1_d', parent_device=picoscope, connection='channel_D', enabled=1, coupling='ac', range_v=10, analog_offset_v=0.0)
+    PicoAnalogIn(name='CC1_e', parent_device=picoscope, connection='channel_E', enabled=1, coupling='ac', range_v=0.01, analog_offset_v=0.0)
+    PicoAnalogIn(name='CC1_f', parent_device=picoscope, connection='channel_F', enabled=1, coupling='ac', range_v=0.01, analog_offset_v=0.0)
+    PicoAnalogIn(name='CC1_g', parent_device=picoscope, connection='channel_G', enabled=1, coupling='ac', range_v=0.01, analog_offset_v=0.0)
+    PicoAnalogIn(name='CC1_h', parent_device=picoscope, connection='channel_H', enabled=1, coupling='ac', range_v=0.01, analog_offset_v=0.0)
+    #
+    # picoscope_173.set_stream_sampling(sampling_rate=1e7, no_post_trigger_samples=600)
+    # picoscope_173.set_simple_trigger(source="channel_A", threshold=1.9, direction='falling', delay_samples=0,
+    #                                  auto_trigger_s=0)
     # picoscope_173.signal_generator_config(offset_voltage=0, pk2pk=2, wave_type='square')
 
-# def init_IDS(trigger_device):
-#     IDSCamera(name='CameraIds',
-#         parent_device=trigger_device,
-#         connection='trigger',
-#         serial_number="4104380609",
-#         camera_setting="Default")
+def init_IDS_UI_1():
+    """Camera installed on 19.01.26"""
+    IDS_UICamera(name='IDSCameraUI5240SE_1',
+                 serial_number="4104540576",
+                 # serial_number="4104380609",
+                 visibility_level=IDSVisibilityLevelType.ADVANCED,
+                 gain=3.5, exposure_time=0.05, roi=(0,0,1280,1024), frame_rate_fps=13,
+                 acquisition_timeout=6)
 
-def init_IDS_UI():
-    IDS_UICamera(name='IDSCameraUI5240SE', serial_number="4104380609", visibility_level=IDSVisibilityLevelType.ADVANCED,
+def init_IDS_UI_2():
+    """First camera"""
+    IDS_UICamera(name='IDSCameraUI5240SE_2', serial_number="4104412217", visibility_level=IDSVisibilityLevelType.ADVANCED,
                  gain=3.5, exposure_time=0.05, roi=(0,0,1280,1024), frame_rate_fps=13,
                  acquisition_timeout=6)
 
@@ -232,16 +245,15 @@ def build_connectiontable():
     DummyPseudoclock('pseudoclock')
     clockline = pseudoclock.clockline
 
-    init_CAEN_bipol(clockline)
+    #init_CAEN_bipol(clockline)
     init_CAEN_sikler_lenses(clockline)
+    #
+    init_picoscope_178()
+    init_picoscope_173()
+
+    #init_IDS_UI_1()
 
     # init_alvium()
-
-    # init_picoscope_178()
-    # init_picoscope_173()
-
-    # init_IDS_UI()
-
     # init_BNC_575()
     # init_BS_10_old(clockline)
     # init_BS_8(clockline)
