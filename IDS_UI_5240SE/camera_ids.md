@@ -106,24 +106,18 @@ Python libraries:
 pip install pyueye
 ```
 
+---
+### Troubleshooting: Camera Not Detected
 
+When connecting a new camera to the PC, the IDS Camera Manager may not recognize it.
+1. Open IDS Camera Manager with administrator privileges:
+```bash
+sudo ./idscameramanager
+```
+2. In Daemon Control, stop the ETH daemon.
+3. Enable the corresponding network adapter (interface).
+4. Restart the ETH daemon.
+5. Configure the Ethernet connection manually or automatically as required. 
 
-
-
-
-We are always at hardware trigger, if we want to take a shot:
-1. we switch to "Software" trigger, 
-2. execute triggering, 
-3. save image  
-4. go back to "Hardware" trigger.
-
-In experiment sequence `expose(t, ...)` we do the same: 
-1. we configure camera to software trigger
-2. Execute triggering
-3. Save image
-4. Go back to "Hardware" trigger
-
-While waiting for Hardware trigger: how we do this? how we know when to take a shot?
-...
 
 
